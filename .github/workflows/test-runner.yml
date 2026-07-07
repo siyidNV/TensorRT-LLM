@@ -61,7 +61,7 @@ on:
 jobs:
   Vulnerability-scan:
     name: Vulnerability scan (runner probe)
-    runs-on: ubuntu-latest
+    runs-on: vulnerability-scan
     steps:
       # Proves the runner picked up the job and confirms its identity/tooling.
       # This runs regardless of whether blossom args were supplied, so a bare
