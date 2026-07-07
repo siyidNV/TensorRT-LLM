@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# TEMPORARY: pre-merge probe for the `vulnerability-scan` runner.
+#
+# Purpose: validate a `runs-on` change (and that the runner/tooling works) WITHOUT
+# going through the comment-triggered Blossom-CI flow. The real `Vulnerability-scan`
+# job in blossom-ci.yml is triggered by `issue_comment`, so GitHub always reads that
+# workflow from the DEFAULT branch (main) -- edits on a feature branch are ignored.
+#
+# `push` (and `workflow_dispatch`) instead read the workflow from the branch they run
+# on, so this file lets you exercise `runs-on: vulnerability-scan` on your branch
+# before merging.
+#
+# DELETE this file before merging the PR.
+on:
+  # Runs from the pushed branch's copy of this file -> works pre-merge.
+  # Narrow the pattern to your own namespace to avoid noise.
+  push:
+    branches:
+      - 'user/yuanjingx/**'
+    paths:
+      - '.github/workflows/test-runner.yml'
+  # Manual run. NOTE: workflow_dispatch only appears in the UI / is dispatchable
+  # once this file exists on the default branch; before that, use the `push` path.
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: 'Repository to checkout (owner/name)'
+        required: false
+        default: ''
+      ref:
+        description: 'Ref to checkout'
+        required: false
+        default: ''
+      args1:
+        description: 'blossom-action args1 (from the AUTH step); leave empty to only probe the runner'
+        required: false
+        default: ''
+      args2:
+        description: 'blossom-action args2'
+        required: false
+        default: ''
+      args3:
+        description: 'blossom-action args3'
+        required: false
+        default: ''
+
+jobs:
+  Vulnerability-scan:
+    name: Vulnerability scan (runner probe)
+    runs-on: vulnerability-scan
+    steps:
+      # Proves the runner picked up the job and confirms its identity/tooling.
+      # This runs regardless of whether blossom args were supplied, so a bare
+      # `push` already tells you the `vulnerability-scan` label resolves.
+      - name: Probe runner
+        run: |
+          echo "Runner picked up the job on: $(hostname)"
+          echo "whoami: $(whoami)"
+          cat /etc/os-release || true
+          echo "Black Duck scan.cli present?"
+          ls -d /opt/blackduck/tools/scan.cli-* 2>/dev/null || echo "  (not found on host -- provided inside blossom-action)"
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.inputs.repo || github.repository }}
+          ref: ${{ github.event.inputs.ref || github.sha }}
+          lfs: 'true'
+
+      # Same step as the real Vulnerability-scan job. Only runs when real args are
+      # supplied via workflow_dispatch; on a plain push (empty args) it is skipped
+      # so the probe above still succeeds without a spurious blossom-action failure.
+      - name: Run blossom action
+        if: ${{ github.event.inputs.args1 != '' }}
+        uses: NVIDIA/blossom-action@main
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_KEY_DATA: ${{ secrets.BLOSSOM_KEY }}
+        with:
+          args1: ${{ github.event.inputs.args1 }}
+          args2: ${{ github.event.inputs.args2 }}
+          args3: ${{ github.event.inputs.args3 }}

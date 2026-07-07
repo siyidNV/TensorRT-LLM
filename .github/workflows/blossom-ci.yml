@@ -428,7 +428,7 @@ jobs:
   Vulnerability-scan:
     name: Vulnerability scan
     needs: [Authorization]
-    runs-on: vulnerability-scan11
+    runs-on: vulnerability-scan
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
