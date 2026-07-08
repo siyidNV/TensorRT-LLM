@@ -498,7 +498,7 @@ window.runMermaid = runMermaid;</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.19.0';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = './_static/switcher.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc20';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc21';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -512,7 +512,7 @@ window.runMermaid = runMermaid;</script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.3.0rc20" />
+  <meta name="docsearch:version" content="1.3.0rc21" />
   
     
     <script src="../../../_static/searchtools.js"></script>
@@ -885,6 +885,7 @@ window.runMermaid = runMermaid;</script>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/sampling.html">Sampling</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/additional-outputs.html">Additional Outputs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../features/post-processor-hook.html">Post-Processing Hook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/guided-decoding.html">Guided Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/speculative-decoding.html">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/checkpoint-loading.html">Checkpoint Loading</a></li>
@@ -924,6 +925,7 @@ window.runMermaid = runMermaid;</script>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Blogs</span></p>
 <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog25_Scaling_Video_Generation_Across_NVL72_Rack_with_TensorRT-LLM.html">Scaling Video Generation Across NVL72 rack with TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog24_MoE_as_Dense_GEMM.html">MoE as Dense GEMM: Optimizing Low-Latency MoE Inference on NVIDIA Blackwell</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog23_Joint_Optimization_of_Agent_Applications_and_TensorRT-LLM.html">Joint Optimization of Agent Applications and TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog22_Helix_Parallelism_Scaling_Multi_Million_Token_Decoding_with_KV_Cache_Sharding.html">Helix Parallelism in TensorRT-LLM: Scaling Multi-Million-Token Decoding with KV Cache Sharding</a></li>
@@ -961,9 +963,9 @@ window.runMermaid = runMermaid;</script>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM">Github Code</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap">Roadmap</a></li>
 </ul>
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Use TensorRT Engine</span></p>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Migration</span></p>
 <ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="../../../legacy/tensorrt_quickstart.html">LLM API with TensorRT Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../legacy/tensorrt-backend-removal.html">Migration Guide: TensorRT Backend Removed</a></li>
 </ul>
 </div>
 </nav></div>
@@ -1823,15 +1825,20 @@ window.runMermaid = runMermaid;</script>
         <span class="n">description</span><span class="o">=</span>
         <span class="s2">&quot;Whether to enable Guess-Verify-Refine (GVR) Top-K for the DSA decode &quot;</span>
         <span class="s2">&quot;indexer. GVR reuses previous-step Top-K indices as hints to reduce &quot;</span>
-        <span class="s2">&quot;threshold search iterations. Currently supported for index_topk=2048 &quot;</span>
-        <span class="s2">&quot;on Blackwell (SM100+) and falls back to the production insertion/radix &quot;</span>
-        <span class="s2">&quot;Top-K path when prerequisites are not met.&quot;</span><span class="p">)</span>
+        <span class="s2">&quot;threshold search iterations. Currently supported for index_topk ∈ &quot;</span>
+        <span class="s2">&quot;{512, 1024, 2048} on Blackwell (SM100+), with compress_ratio ∈ {1, 4} &quot;</span>
+        <span class="s2">&quot;(DSv3.2 + DSv4 indexers). Falls back to the production insertion/&quot;</span>
+        <span class="s2">&quot;radix Top-K path when prerequisites are not met.&quot;</span><span class="p">)</span>
     <span class="n">indexer_k_dtype</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;fp8&quot;</span><span class="p">,</span> <span class="s2">&quot;fp4&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default</span><span class="o">=</span><span class="s2">&quot;fp8&quot;</span><span class="p">,</span>
         <span class="n">description</span><span class="o">=</span>
-        <span class="s2">&quot;Data type used for the indexer K cache. `fp4` requires Blackwell+ &quot;</span>
-        <span class="s2">&quot;(SM&gt;=100) and index_head_dim=128, it can halve the indexer K cache &quot;</span>
-        <span class="s2">&quot;per-token footprint from 132 B to 68 B.&quot;</span><span class="p">)</span>
+        <span class="s2">&quot;Data type used for the indexer K cache. `fp8` stores one FP8 E4M3 &quot;</span>
+        <span class="s2">&quot;byte per element with a per-128 float32 scale; `fp4` packs two FP4 &quot;</span>
+        <span class="s2">&quot;E2M1 codes per byte with a per-32 UE8M0 exponent, halving the &quot;</span>
+        <span class="s2">&quot;per-token indexer K footprint (132 B to 68 B at index_head_dim=128). &quot;</span>
+        <span class="s2">&quot;`fp4` requires Blackwell+ (SM&gt;=100) at runtime and &quot;</span>
+        <span class="s2">&quot;index_head_dim=128.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
 
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_validate_indexer_k_dtype</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -1839,8 +1846,9 @@ window.runMermaid = runMermaid;</script>
 
 <span class="sd">        DeepGEMM&#39;s fp8_fp4_mqa_logits / fp8_fp4_paged_mqa_logits kernels</span>
 <span class="sd">        require SM&gt;=100, and invokeFusedCatFp4 hard-asserts head_dim==128.</span>
-<span class="sd">        Surface both as Pydantic errors so invalid configs fail fast at</span>
-<span class="sd">        construction instead of with a cryptic kernel-launch failure.</span>
+<span class="sd">        Surface explicitly requested invalid configs as Pydantic errors so</span>
+<span class="sd">        they fail fast instead of with a cryptic kernel-launch failure. The</span>
+<span class="sd">        DeepSeek-V4 default falls back to fp8 on pre-Blackwell GPUs.</span>
 
 <span class="sd">        The SM check is skipped when CUDA is unavailable (config</span>
 <span class="sd">        construction on CPU-only hosts or at doc-gen time), leaving the</span>
@@ -1856,10 +1864,39 @@ window.runMermaid = runMermaid;</script>
                 <span class="kn">from</span><span class="w"> </span><span class="nn">tensorrt_llm._utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_sm_version</span>
                 <span class="n">sm</span> <span class="o">=</span> <span class="n">get_sm_version</span><span class="p">()</span>
                 <span class="k">if</span> <span class="n">sm</span> <span class="o">&lt;</span> <span class="mi">100</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                        <span class="sa">f</span><span class="s2">&quot;indexer_k_dtype=&#39;fp4&#39; requires SM&gt;=100 (Blackwell); &quot;</span>
-                        <span class="sa">f</span><span class="s2">&quot;current device is SM</span><span class="si">{</span><span class="n">sm</span><span class="si">}</span><span class="s2">. Set indexer_k_dtype=&#39;fp8&#39; &quot;</span>
-                        <span class="sa">f</span><span class="s2">&quot;for non-Blackwell GPUs.&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="s1">&#39;indexer_k_dtype&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_fields_set</span><span class="p">:</span>
+                        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                            <span class="s2">&quot;DeepSeek-V4 defaults indexer_k_dtype to &#39;fp4&#39;, &quot;</span>
+                            <span class="sa">f</span><span class="s2">&quot;but the current device is SM</span><span class="si">{</span><span class="n">sm</span><span class="si">}</span><span class="s2">; falling back &quot;</span>
+                            <span class="s2">&quot;to &#39;fp8&#39;.&quot;</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">indexer_k_dtype</span> <span class="o">=</span> <span class="s2">&quot;fp8&quot;</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                            <span class="sa">f</span><span class="s2">&quot;indexer_k_dtype=&#39;fp4&#39; requires SM&gt;=100 &quot;</span>
+                            <span class="sa">f</span><span class="s2">&quot;(Blackwell); current device is SM</span><span class="si">{</span><span class="n">sm</span><span class="si">}</span><span class="s2">. Set &quot;</span>
+                            <span class="sa">f</span><span class="s2">&quot;indexer_k_dtype=&#39;fp8&#39; for non-Blackwell GPUs.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;after&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_warn_heuristic_topk_unsupported</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Warn when GVR Top-K cannot accelerate the configured index_topk.</span>
+
+<span class="sd">        This warning does not reject the configuration.</span>
+
+<span class="sd">        The C++ ``indexer_topk_decode`` dispatcher silently falls back to the</span>
+<span class="sd">        radix Top-K path for unsupported K, so without this warning a user may</span>
+<span class="sd">        believe GVR is active when it is not. ``index_topk`` may still be None</span>
+<span class="sd">        here (it is filled from the checkpoint later), so only validate</span>
+<span class="sd">        concrete values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">supported_topk</span> <span class="o">=</span> <span class="p">(</span><span class="mi">512</span><span class="p">,</span> <span class="mi">1024</span><span class="p">,</span> <span class="mi">2048</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">enable_heuristic_topk</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_topk</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_topk</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_topk</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;enable_heuristic_topk=True but index_topk=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">index_topk</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;is not in the GVR-supported set </span><span class="si">{</span><span class="n">supported_topk</span><span class="si">}</span><span class="s2">; the indexer &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;will silently fall back to the radix Top-K path. Set &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;index_topk to one of </span><span class="si">{</span><span class="n">supported_topk</span><span class="si">}</span><span class="s2"> to use GVR.&quot;</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
 <div class="viewcode-block" id="DeepSeekSparseAttentionConfig.supports_backend">
@@ -1877,6 +1914,37 @@ window.runMermaid = runMermaid;</script>
         <span class="bp">self</span><span class="o">.</span><span class="n">seq_len_threshold</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_topk</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">skip_indexer_for_short_seqs</span></div>
 
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_full_indexer_layer</span><span class="p">(</span><span class="n">pretrained_config</span><span class="p">,</span> <span class="n">layer_idx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Whether a DSA layer runs its own indexer (&quot;full&quot;) or reuses the</span>
+<span class="sd">        previous full layer&#39;s top-k (&quot;shared&quot;) -- cross-layer indexer sharing.</span>
+
+<span class="sd">        Resolved from the HF config: index_topk_pattern, else</span>
+<span class="sd">        index_topk_freq/index_skip_topk_offset. The MTP/nextn layer</span>
+<span class="sd">        (&gt;= num_hidden_layers) is always full. Defaults to full (a dense</span>
+<span class="sd">        per-layer indexer, e.g. DeepSeek-V3.2).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pretrained_config</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">layer_idx</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pretrained_config</span><span class="p">,</span> <span class="s2">&quot;num_hidden_layers&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">layer_idx</span> <span class="o">&gt;=</span> <span class="n">n</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>  <span class="c1"># MTP/nextn layer</span>
+        <span class="n">pattern</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pretrained_config</span><span class="p">,</span> <span class="s2">&quot;index_topk_pattern&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pattern</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">is_full</span> <span class="o">=</span> <span class="ow">not</span> <span class="p">(</span><span class="n">layer_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span>
+                           <span class="ow">and</span> <span class="nb">str</span><span class="p">(</span><span class="n">pattern</span><span class="p">[</span><span class="n">layer_idx</span><span class="p">])</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;S&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">freq</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">pretrained_config</span><span class="p">,</span> <span class="s2">&quot;index_topk_freq&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">offset</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pretrained_config</span><span class="p">,</span> <span class="s2">&quot;index_skip_topk_offset&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="n">is_full</span> <span class="o">=</span> <span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">layer_idx</span> <span class="o">-</span> <span class="n">offset</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">%</span> <span class="n">freq</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">layer_idx</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_full</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;DSA layer 0 resolved to &#39;shared&#39; but has no prior full layer&#39;s &quot;</span>
+                <span class="s2">&quot;top-k to reuse; forcing it to &#39;full&#39;. Check index_topk_pattern.&quot;</span>
+            <span class="p">)</span>
+            <span class="n">is_full</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="n">is_full</span>
 
 <div class="viewcode-block" id="DeepSeekSparseAttentionConfig.to_sparse_params">
 <a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.DeepSeekSparseAttentionConfig.to_sparse_params">[docs]</a>
@@ -1905,6 +1973,8 @@ window.runMermaid = runMermaid;</script>
             <span class="n">indexer_rope_interleave</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indexer_rope_interleave</span><span class="p">,</span>
             <span class="n">enable_heuristic_topk</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">enable_heuristic_topk</span><span class="p">,</span>
             <span class="n">indexer_k_dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indexer_k_dtype</span><span class="p">,</span>
+            <span class="n">is_full_indexer_layer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_full_indexer_layer</span><span class="p">(</span>
+                <span class="n">pretrained_config</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;layer_idx&quot;</span><span class="p">)),</span>
         <span class="p">)</span></div>
 
 
@@ -1940,15 +2010,22 @@ window.runMermaid = runMermaid;</script>
 <a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.DeepSeekV4SparseAttentionConfig">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">DeepSeekV4SparseAttentionConfig</span><span class="p">(</span><span class="n">DeepSeekSparseAttentionConfig</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for DeepSeek-V4 Sparse Attention.&quot;&quot;&quot;</span>
-
     <span class="n">algorithm</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;deepseek_v4&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;deepseek_v4&quot;</span>
     <span class="n">index_head_dim</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>
         <span class="n">description</span><span class="o">=</span><span class="s2">&quot;The dimension of the DeepSeek-V4 indexer heads.&quot;</span><span class="p">)</span>
+    <span class="n">indexer_k_dtype</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;fp8&quot;</span><span class="p">,</span> <span class="s2">&quot;fp4&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;fp4&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;Data type used for the indexer K cache. DeepSeek-V4 defaults to &quot;</span>
+        <span class="s2">&quot;`fp4` to reduce the per-token indexer K footprint on Blackwell+ &quot;</span>
+        <span class="s2">&quot;(SM&gt;=100). Set to `fp8` for the legacy FP8 indexer K cache path.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
     <span class="n">skip_indexer_for_short_seqs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="n">description</span><span class="o">=</span>
         <span class="s2">&quot;Whether to skip the MQA and Top-K in the indexer for short sequences.&quot;</span><span class="p">)</span>
+
     <span class="n">compress_ratios</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default_factory</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span>
         <span class="n">description</span><span class="o">=</span><span class="s2">&quot;The compress ratios of each layer. DeepSeek-V4 uses 0 &quot;</span>
@@ -1994,6 +2071,67 @@ window.runMermaid = runMermaid;</script>
     <span class="k">def</span><span class="w"> </span><span class="nf">needs_separate_short_long_cuda_graphs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
         <span class="c1"># DeepSeek-V4 does not support short/long CUDA graph separation.</span>
         <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="DeepSeekV4SparseAttentionConfig.to_sparse_params">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.DeepSeekV4SparseAttentionConfig.to_sparse_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_sparse_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">tensorrt_llm._torch.attention_backend.sparse.deepseek_v4</span><span class="w"> </span><span class="kn">import</span> \
+            <span class="n">DeepSeekV4Params</span>
+
+        <span class="n">pretrained_config</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;pretrained_config&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_value</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">value</span>
+            <span class="k">if</span> <span class="n">pretrained_config</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pretrained_config</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">default</span>
+
+        <span class="k">return</span> <span class="n">DeepSeekV4Params</span><span class="p">(</span>
+            <span class="n">index_n_heads</span><span class="o">=</span><span class="n">_value</span><span class="p">(</span><span class="s2">&quot;index_n_heads&quot;</span><span class="p">),</span>
+            <span class="n">index_head_dim</span><span class="o">=</span><span class="n">_value</span><span class="p">(</span><span class="s2">&quot;index_head_dim&quot;</span><span class="p">),</span>
+            <span class="n">index_topk</span><span class="o">=</span><span class="n">_value</span><span class="p">(</span><span class="s2">&quot;index_topk&quot;</span><span class="p">),</span>
+            <span class="n">indexer_max_chunk_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indexer_max_chunk_size</span><span class="p">,</span>
+            <span class="n">skip_indexer_for_short_seqs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">skip_indexer_for_short_seqs</span><span class="p">,</span>
+            <span class="n">use_cute_dsl_topk</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">use_cute_dsl_topk</span><span class="p">,</span>
+            <span class="n">use_cute_dsl_paged_mqa_logits</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">use_cute_dsl_paged_mqa_logits</span><span class="p">,</span>
+            <span class="n">q_split_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">q_split_threshold</span><span class="p">,</span>
+            <span class="n">indexer_rope_interleave</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indexer_rope_interleave</span><span class="p">,</span>
+            <span class="n">enable_heuristic_topk</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">enable_heuristic_topk</span><span class="p">,</span>
+            <span class="n">indexer_k_dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indexer_k_dtype</span><span class="p">,</span>
+            <span class="n">compress_ratios</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compress_ratios</span><span class="p">,</span>
+            <span class="n">window_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window_size</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DeepSeekV4SparseAttentionConfig.to_sparse_metadata_params">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.DeepSeekV4SparseAttentionConfig.to_sparse_metadata_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_sparse_metadata_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">tensorrt_llm._torch.attention_backend.sparse.deepseek_v4</span><span class="w"> </span><span class="kn">import</span> \
+            <span class="n">DeepSeekV4MetadataParams</span>
+
+        <span class="n">pretrained_config</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;pretrained_config&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_value</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">value</span>
+            <span class="k">if</span> <span class="n">pretrained_config</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pretrained_config</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">default</span>
+
+        <span class="k">return</span> <span class="n">DeepSeekV4MetadataParams</span><span class="p">(</span>
+            <span class="n">indexer_max_chunk_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indexer_max_chunk_size</span> <span class="ow">or</span> <span class="mi">32768</span><span class="p">,</span>
+            <span class="n">max_sparse_topk</span><span class="o">=</span><span class="n">_value</span><span class="p">(</span><span class="s2">&quot;index_topk&quot;</span><span class="p">),</span>
+            <span class="n">enable_indexer_skip</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">skip_indexer_for_short_seqs</span><span class="p">,</span>
+            <span class="n">enable_heuristic_topk</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">enable_heuristic_topk</span><span class="p">,</span>
+            <span class="n">use_cute_dsl_paged_mqa_logits</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">use_cute_dsl_paged_mqa_logits</span><span class="p">),</span>
+            <span class="n">q_split_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">q_split_threshold</span><span class="p">,</span>
+            <span class="n">compress_ratios</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compress_ratios</span><span class="p">,</span>
+            <span class="n">window_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window_size</span><span class="p">,</span>
+        <span class="p">)</span></div>
 </div>
 
 
@@ -2209,7 +2347,7 @@ window.runMermaid = runMermaid;</script>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for MoE.&quot;&quot;&quot;</span>
     <span class="n">backend</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span>
         <span class="s2">&quot;AUTO&quot;</span><span class="p">,</span> <span class="s2">&quot;CUTLASS&quot;</span><span class="p">,</span> <span class="s2">&quot;CUTEDSL&quot;</span><span class="p">,</span> <span class="s2">&quot;WIDEEP&quot;</span><span class="p">,</span> <span class="s2">&quot;TRTLLM&quot;</span><span class="p">,</span> <span class="s2">&quot;DEEPGEMM&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;DENSEGEMM&quot;</span><span class="p">,</span> <span class="s2">&quot;VANILLA&quot;</span><span class="p">,</span> <span class="s2">&quot;TRITON&quot;</span><span class="p">,</span> <span class="s2">&quot;MARLIN&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="s2">&quot;DENSEGEMM&quot;</span><span class="p">,</span> <span class="s2">&quot;VANILLA&quot;</span><span class="p">,</span> <span class="s2">&quot;TRITON&quot;</span><span class="p">,</span> <span class="s2">&quot;MARLIN&quot;</span><span class="p">,</span> <span class="s2">&quot;MEGAMOE_DEEPGEMM&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
             <span class="n">default</span><span class="o">=</span><span class="s1">&#39;AUTO&#39;</span><span class="p">,</span>
             <span class="n">description</span><span class="o">=</span><span class="s2">&quot;MoE backend to use. &quot;</span>
             <span class="s2">&quot;AUTO selects default backend based on model. It currently doesn</span><span class="se">\&#39;</span><span class="s2">t always give the best choice for all scenarios. The capabilities of auto selection will be improved in future releases.&quot;</span>
@@ -2246,6 +2384,7 @@ window.runMermaid = runMermaid;</script>
 <span class="c1"># Maps alias → full import path (module.ClassName).</span>
 <span class="n">TOKENIZER_ALIASES</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s1">&#39;deepseek_v32&#39;</span><span class="p">:</span> <span class="s1">&#39;tensorrt_llm.tokenizer.deepseek_v32.DeepseekV32Tokenizer&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;deepseek_v4&#39;</span><span class="p">:</span> <span class="s1">&#39;tensorrt_llm.tokenizer.deepseek_v4.DeepseekV4Tokenizer&#39;</span><span class="p">,</span>
 <span class="p">}</span>
 
 
@@ -2318,6 +2457,43 @@ window.runMermaid = runMermaid;</script>
         <span class="s2">&quot;scatter requests that would otherwise consolidate on a single warm &quot;</span>
         <span class="s2">&quot;rank, wasting prefill. Default False preserves pre-warmup routing. &quot;</span>
         <span class="s2">&quot;Only used when enable_kv_cache_aware_routing is True.&quot;</span><span class="p">)</span>
+    <span class="n">kv_cache_routing_account_for_in_transfer</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;In-transfer load accounting in KV cache-aware routing. When True, &quot;</span>
+        <span class="s2">&quot;requests still streaming KV to the GEN worker (tracked by the &quot;</span>
+        <span class="s2">&quot;PyExecutor AsyncTransferManager but no longer in active_requests) &quot;</span>
+        <span class="s2">&quot;are folded back into the per-rank load reported via RankState. &quot;</span>
+        <span class="s2">&quot;This can improve balance under heavy disagg traffic but inflates &quot;</span>
+        <span class="s2">&quot;num_active_requests reported upstream, which lets the inference &quot;</span>
+        <span class="s2">&quot;loop&#39;s idle-fetch wait expire even when no requests are runnable &quot;</span>
+        <span class="s2">&quot;and causes empty fetch cycles. Default False preserves the prior &quot;</span>
+        <span class="s2">&quot;behaviour (fetch blocks when truly idle). &quot;</span>
+        <span class="s2">&quot;Only used when enable_kv_cache_aware_routing is True.&quot;</span><span class="p">)</span>
+    <span class="n">kv_cache_routing_conversation_affinity</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;Enable explicit conversation-affinity routing for attention DP. When &quot;</span>
+        <span class="s2">&quot;True, the first request of each conversation is round-robined across &quot;</span>
+        <span class="s2">&quot;ranks and every subsequent request carrying the same &quot;</span>
+        <span class="s2">&quot;conversation_params.conversation_id is pinned to that conversation&#39;s &quot;</span>
+        <span class="s2">&quot;first-turn rank. OpenAI requests use the body conversation_params as &quot;</span>
+        <span class="s2">&quot;canonical; the serve edge only creates conversation_params from the &quot;</span>
+        <span class="s2">&quot;X-Session-ID header when the body does not provide it. This keeps a &quot;</span>
+        <span class="s2">&quot;multi-turn conversation&#39;s KV-cache prefix on one rank (maximizing &quot;</span>
+        <span class="s2">&quot;block reuse, minimizing cross-rank migration). Unlike &quot;</span>
+        <span class="s2">&quot;enable_kv_cache_aware_routing (affinity inferred from prefix-match &quot;</span>
+        <span class="s2">&quot;length, which is lost when blocks are evicted), the conversation-&gt;rank &quot;</span>
+        <span class="s2">&quot;map is explicit and survives eviction. Falls back to load-balanced &quot;</span>
+        <span class="s2">&quot;round-robin when no conversation_id is available. Takes precedence &quot;</span>
+        <span class="s2">&quot;over enable_kv_cache_aware_routing when both are set.&quot;</span><span class="p">)</span>
+    <span class="n">kv_cache_routing_max_sessions</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">65536</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;LRU cap on the conversation-&gt;rank map used by conversation-affinity &quot;</span>
+        <span class="s2">&quot;routing. The oldest conversations are evicted once more than this many &quot;</span>
+        <span class="s2">&quot;are tracked, bounding memory on long-running servers. Only used when &quot;</span>
+        <span class="s2">&quot;kv_cache_routing_conversation_affinity is True.&quot;</span><span class="p">)</span>
 
 <div class="viewcode-block" id="AttentionDpConfig.validate_attention_dp_config">
 <a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.AttentionDpConfig.validate_attention_dp_config">[docs]</a>
@@ -2686,6 +2862,10 @@ window.runMermaid = runMermaid;</script>
     <span class="k">def</span><span class="w"> </span><span class="nf">tokens_per_gen_step</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Total tokens per gen request in one spec dec iteration (including golden token).&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_total_draft_tokens</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_runtime_tokens_per_gen_step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">runtime_draft_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Total tokens per gen request for the current runtime draft length.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">runtime_draft_len</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">num_capture_layers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
         <span class="k">return</span> <span class="mi">0</span>
@@ -3493,6 +3673,13 @@ window.runMermaid = runMermaid;</script>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;PARD needs 2K tokens per gen request: K+1 accepted + K-1 masks.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_draft_len</span>
 
+<div class="viewcode-block" id="PARDDecodingConfig.get_runtime_tokens_per_gen_step">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.PARDDecodingConfig.get_runtime_tokens_per_gen_step">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_runtime_tokens_per_gen_step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">runtime_draft_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;PARD needs 2K runtime tokens per gen request for logical draft length K.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">runtime_draft_len</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">runtime_draft_len</span></div>
+
+
 <div class="viewcode-block" id="PARDDecodingConfig.supports_backend">
 <a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.PARDDecodingConfig.supports_backend">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">supports_backend</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">backend</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -3555,6 +3742,13 @@ window.runMermaid = runMermaid;</script>
 <span class="sd">        fillers through the target is pure wasted work at large batch size.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_draft_len</span> <span class="o">+</span> <span class="mi">1</span>
+
+<div class="viewcode-block" id="DFlashDecodingConfig.get_runtime_tokens_per_gen_step">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.DFlashDecodingConfig.get_runtime_tokens_per_gen_step">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_runtime_tokens_per_gen_step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">runtime_draft_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;DFlash needs K+1 runtime tokens per gen request (K drafts + 1 bonus).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">runtime_draft_len</span></div>
+
 
 <div class="viewcode-block" id="DFlashDecodingConfig.supports_backend">
 <a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.DFlashDecodingConfig.supports_backend">[docs]</a>
@@ -4129,14 +4323,22 @@ window.runMermaid = runMermaid;</script>
         <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Use pure-Python scheduler instead of C++ scheduler.&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_to_pybind</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="n">enable_prefix_aware_scheduling</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Use KV prefix-reuse estimates for scheduler admission, &quot;</span>
+                     <span class="s2">&quot;duplicate-request deferral, and token-budget decisions. &quot;</span>
+                     <span class="s2">&quot;This is orthogonal to &quot;</span>
+                     <span class="s2">&quot;kv_cache_config.enable_block_reuse.&quot;</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_to_pybind</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_SchedulerConfig</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_SchedulerConfig</span><span class="p">(</span>
             <span class="n">capacity_scheduler_policy</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">capacity_scheduler_policy</span><span class="o">.</span><span class="n">_to_pybind</span><span class="p">(</span>
             <span class="p">),</span>
             <span class="n">context_chunking_policy</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">context_chunking_policy</span><span class="o">.</span><span class="n">_to_pybind</span><span class="p">()</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">context_chunking_policy</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
             <span class="n">dynamic_batch_config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dynamic_batch_config</span><span class="o">.</span><span class="n">_to_pybind</span><span class="p">()</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dynamic_batch_config</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span></div>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dynamic_batch_config</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">enable_prefix_aware_scheduling</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">enable_prefix_aware_scheduling</span><span class="p">)</span></div>
 
 
 
@@ -4485,6 +4687,13 @@ window.runMermaid = runMermaid;</script>
         <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">,</span>
         <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Whether to use the KV cache manager v2 (experimental).&quot;</span><span class="p">)</span>
 
+    <span class="c1"># This is a pure python field, not a pybind field. It is only for the Pytorch backend.</span>
+    <span class="n">enable_swa_scratch_reuse</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;Whether KV cache manager v2 uses SWA scratch reuse during prefill.&quot;</span><span class="p">)</span>
+
     <span class="n">kv_cache_event_hash_algo</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span>
         <span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="s2">&quot;v1_block_key&quot;</span><span class="p">,</span> <span class="s2">&quot;v2_sha256&quot;</span><span class="p">,</span> <span class="s2">&quot;v2_sha256_64&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
             <span class="n">default</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span>
@@ -4524,6 +4733,34 @@ window.runMermaid = runMermaid;</script>
         <span class="s2">&quot;Number of queued context requests to prefetch disk-tier KV cache blocks to host for. &quot;</span>
         <span class="s2">&quot;Set to 0 to disable prefetch. Only effective with KV cache manager v2 and block reuse enabled.&quot;</span>
     <span class="p">)</span>
+
+    <span class="c1"># This is a pure python field, not a pybind field. It is only for the Pytorch backend.</span>
+    <span class="n">pool_ratio</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;Initial pool ratios for KV cache manager v2. When used by DeepSeek-V4, &quot;</span>
+        <span class="s2">&quot;values map to KVCacheManagerV2 pool_group_id order and must sum to 1.0. &quot;</span>
+        <span class="s2">&quot;When set, DeepSeek-V4 uses this directly and avg_seq_len does not take effect.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># This is a pure python field, not a pybind field. It is only for the Pytorch backend.</span>
+    <span class="n">avg_seq_len</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PositiveInt</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;Average sequence length used by DeepSeek-V4 to build the KV cache manager v2 &quot;</span>
+        <span class="s2">&quot;typical step. If unset, max_seq_len is used. This does not take effect when &quot;</span>
+        <span class="s2">&quot;pool_ratio is set.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># This is a pure python field, not a pybind field. It is only for the Pytorch backend.</span>
+    <span class="n">block_reuse_policy</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;all_reusable&quot;</span><span class="p">,</span> <span class="s2">&quot;per_request&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;all_reusable&quot;</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;KV cache manager v2 block reuse policy. &quot;</span>
+        <span class="s2">&quot;With SWA scratch reuse and &#39;all_reusable&#39;, only non-scratch &quot;</span>
+        <span class="s2">&quot;blocks are saved for reuse.&quot;</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_to_pybind</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">config</span> <span class="o">=</span> <span class="n">_KvCacheConfig</span><span class="p">(</span>
@@ -4645,6 +4882,22 @@ window.runMermaid = runMermaid;</script>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                 <span class="s2">&quot;kv_cache_config.max_util_for_resume must be between 0 and 1&quot;</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">v</span></div>
+
+
+<div class="viewcode-block" id="KvCacheConfig.validate_pool_ratio">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.KvCacheConfig.validate_pool_ratio">[docs]</a>
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s1">&#39;pool_ratio&#39;</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_pool_ratio</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]):</span>
+        <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">v</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">r</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">v</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;kv_cache_config.pool_ratio values must be positive&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">rel_tol</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">abs_tol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;kv_cache_config.pool_ratio values must sum to 1.0&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">v</span></div>
 </div>
 
 
@@ -4715,13 +4968,20 @@ window.runMermaid = runMermaid;</script>
         <span class="s2">&quot;Timeout in milliseconds to wait for the sender future to be ready when scheduled batch size is 0. This allows the request to be eventually cancelled by the user or because of kv_transfer_timeout_ms&quot;</span>
     <span class="p">)</span>
 
+    <span class="n">kv_transfer_poll_interval_ms</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PositiveInt</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;Bounded wait interval in milliseconds for polling KV transfer &quot;</span>
+        <span class="s2">&quot;progress when active transfers block disaggregated admission.&quot;</span><span class="p">)</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_to_pybind</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">_CacheTransceiverConfig</span><span class="p">(</span>
             <span class="n">backend</span><span class="o">=</span><span class="n">_CacheTransceiverBackendType</span><span class="o">.</span><span class="n">from_string</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="p">),</span>
             <span class="n">max_tokens_in_buffer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_tokens_in_buffer</span><span class="p">,</span>
             <span class="n">kv_transfer_timeout_ms</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">kv_transfer_timeout_ms</span><span class="p">,</span>
             <span class="n">kv_transfer_sender_future_timeout_ms</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span>
-            <span class="n">kv_transfer_sender_future_timeout_ms</span><span class="p">)</span></div>
+            <span class="n">kv_transfer_sender_future_timeout_ms</span><span class="p">,</span>
+            <span class="n">kv_transfer_poll_interval_ms</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">kv_transfer_poll_interval_ms</span><span class="p">)</span></div>
 
 
 
@@ -4824,6 +5084,18 @@ window.runMermaid = runMermaid;</script>
         <span class="s2">&quot;(1) a built-in alias (e.g., &#39;deepseek_v32&#39;), or &quot;</span>
         <span class="s2">&quot;(2) a Python import path (e.g., &#39;tensorrt_llm.tokenizer.deepseek_v32.DeepseekV32Tokenizer&#39;). &quot;</span>
         <span class="s2">&quot;The tokenizer class must implement &#39;from_pretrained(path, **kwargs)&#39; and the TokenizerBase interface.&quot;</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
+
+    <span class="n">post_processor_hook</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;Python import path of a user post-processing hook applied after &quot;</span>
+        <span class="s2">&quot;detokenization and before the per-endpoint response formatter (e.g. &quot;</span>
+        <span class="s2">&quot;&#39;my_pkg.guardrail.MyPostProcessorHook&#39;). The class must be importable and &quot;</span>
+        <span class="s2">&quot;picklable, take no constructor arguments, and be callable as &quot;</span>
+        <span class="s2">&quot;&#39;__call__(chunk) -&gt; verdict&#39; (see tensorrt_llm.executor.postprocessor_hook). &quot;</span>
+        <span class="s2">&quot;It runs once per output, per streaming chunk, and may rewrite, &quot;</span>
+        <span class="s2">&quot;suppress, or terminate the output; it owns its own per-request state.&quot;</span><span class="p">,</span>
         <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
 
     <span class="n">skip_tokenizer_init</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
@@ -4935,12 +5207,18 @@ window.runMermaid = runMermaid;</script>
 
     <span class="n">iter_stats_max_iterations</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;The maximum number of iterations for iter stats.&quot;</span><span class="p">,</span>
+        <span class="n">ge</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;The maximum number of iterations for iter stats. Set to -1 to keep all iteration stats. &quot;</span>
+        <span class="s2">&quot;Set to 0 to disable iteration stats in the TensorRT executor.&quot;</span><span class="p">,</span>
         <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
 
     <span class="n">request_stats_max_iterations</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;The maximum number of iterations for request stats.&quot;</span><span class="p">,</span>
+        <span class="n">ge</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;The maximum number of iterations for request stats. Set to -1 to keep all request stats. &quot;</span>
+        <span class="s2">&quot;Set to 0 to disable request stats.&quot;</span><span class="p">,</span>
         <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
 
     <span class="c1"># A handful of options from PretrainedConfig</span>
@@ -5187,25 +5465,51 @@ window.runMermaid = runMermaid;</script>
     <span class="k">def</span><span class="w"> </span><span class="nf">validate_and_init_tokenizer</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize tokenizer based on configuration.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">skip_tokenizer_init</span><span class="p">:</span>
+            <span class="c1"># The post-processing hook is a text-based guardrail</span>
+            <span class="c1"># and needs detokenized text to inspect; without a tokenizer it could</span>
+            <span class="c1"># never run, so reject the combination rather than silently disabling</span>
+            <span class="c1"># the guardrail (mirrors the harmony fail-fast in OpenAIServer).</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">post_processor_hook</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;post_processor_hook is not supported together with &quot;</span>
+                    <span class="s2">&quot;skip_tokenizer_init: the post-processing hook operates on &quot;</span>
+                    <span class="s2">&quot;detokenized text, which is unavailable when the tokenizer &quot;</span>
+                    <span class="s2">&quot;is skipped.&quot;</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">custom_tokenizer</span><span class="p">:</span>
-            <span class="c1"># If tokenizer is already a tokenizer object, custom_tokenizer is not compatible</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span>
-                          <span class="p">(</span><span class="n">TokenizerBase</span><span class="p">,</span> <span class="n">PreTrainedTokenizerBase</span><span class="p">)):</span>
+            <span class="c1"># IPC workers receive the tokenizer object that was already loaded</span>
+            <span class="c1"># in the parent LLM process. Reuse TRT-LLM tokenizer wrappers as-is.</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">TokenizerBase</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span>
+            <span class="c1"># A raw HF tokenizer object would bypass the requested custom</span>
+            <span class="c1"># wrapper, so keep rejecting that combination.</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">PreTrainedTokenizerBase</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                     <span class="s2">&quot;Cannot use custom_tokenizer when tokenizer is already a tokenizer object. &quot;</span>
                     <span class="s2">&quot;Please specify a tokenizer path or leave it as None to load from model path.&quot;</span>
                 <span class="p">)</span>
 
-            <span class="kn">from</span><span class="w"> </span><span class="nn">tensorrt_llm.tokenizer</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_custom_tokenizer</span>
+            <span class="c1"># Resolve short aliases via the module-level TOKENIZER_ALIASES.</span>
+            <span class="n">tokenizer_path</span> <span class="o">=</span> <span class="n">TOKENIZER_ALIASES</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">custom_tokenizer</span><span class="p">,</span>
+                                                   <span class="bp">self</span><span class="o">.</span><span class="n">custom_tokenizer</span><span class="p">)</span>
 
-            <span class="c1"># Use tokenizer path if specified, otherwise use model path</span>
-            <span class="n">load_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="n">load_custom_tokenizer</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">custom_tokenizer</span><span class="p">,</span>
-                <span class="n">load_path</span><span class="p">,</span>
-                <span class="n">trust_remote_code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">trust_remote_code</span><span class="p">,</span>
-                <span class="n">use_fast</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer_mode</span> <span class="o">!=</span> <span class="s1">&#39;slow&#39;</span><span class="p">)</span>
+            <span class="c1"># Dynamically import and use custom tokenizer</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">importlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_module</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">module_path</span><span class="p">,</span> <span class="n">class_name</span> <span class="o">=</span> <span class="n">tokenizer_path</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="n">module</span> <span class="o">=</span> <span class="n">import_module</span><span class="p">(</span><span class="n">module_path</span><span class="p">)</span>
+                <span class="n">tokenizer_class</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">class_name</span><span class="p">)</span>
+                <span class="c1"># Use tokenizer path if specified, otherwise use model path</span>
+                <span class="n">load_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="n">tokenizer_class</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
+                    <span class="n">load_path</span><span class="p">,</span>
+                    <span class="n">trust_remote_code</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">trust_remote_code</span><span class="p">,</span>
+                    <span class="n">use_fast</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer_mode</span> <span class="o">!=</span> <span class="s1">&#39;slow&#39;</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">ImportError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Failed to load custom tokenizer &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">custom_tokenizer</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">. &quot;</span>
+                    <span class="s2">&quot;Expected format: &#39;module.path.ClassName&#39; or a recognized alias.&quot;</span>
+                <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="n">tokenizer_factory</span><span class="p">(</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span>
@@ -5867,6 +6171,35 @@ window.runMermaid = runMermaid;</script>
         <span class="n">description</span><span class="o">=</span><span class="s2">&quot;DWDP (Distributed Weight Data Parallelism) config.&quot;</span><span class="p">,</span>
         <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
 
+    <span class="n">encoder_max_batch_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum batch size for the multimodal encoder&#39;s AttentionMetadata. &quot;</span>
+            <span class="s2">&quot;Falls back to `max_batch_size` when unset. This budget is shared &quot;</span>
+            <span class="s2">&quot;proportionately across all modalities the model encodes, not set &quot;</span>
+            <span class="s2">&quot;per modality; per-modality knobs may be added later.&quot;</span><span class="p">),</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
+
+    <span class="n">encoder_max_num_tokens</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum number of tokens for the multimodal encoder&#39;s &quot;</span>
+            <span class="s2">&quot;AttentionMetadata. Falls back to `max_num_tokens` when unset. This &quot;</span>
+            <span class="s2">&quot;budget is shared proportionately across all modalities the model &quot;</span>
+            <span class="s2">&quot;encodes, not set per modality; per-modality knobs may be added &quot;</span>
+            <span class="s2">&quot;later.&quot;</span><span class="p">),</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="TorchLlmArgs.validate_encoder_runtime_sizes">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.TorchLlmArgs.validate_encoder_runtime_sizes">[docs]</a>
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">&quot;encoder_max_batch_size&quot;</span><span class="p">,</span> <span class="s2">&quot;encoder_max_num_tokens&quot;</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_encoder_runtime_sizes</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">v</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;must be a positive integer when set&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">v</span></div>
+
+
     <span class="n">attn_backend</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default</span><span class="o">=</span><span class="s1">&#39;TRTLLM&#39;</span><span class="p">,</span>
         <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Attention backend to use.&quot;</span><span class="p">,</span>
@@ -6130,8 +6463,22 @@ window.runMermaid = runMermaid;</script>
 
     <span class="n">max_stats_len</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
-        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;The max number of performance statistic entries.&quot;</span><span class="p">,</span>
-        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">)</span>
+        <span class="n">ge</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span>
+        <span class="s2">&quot;The max number of performance statistic entries. Set to -1 to keep all entries. &quot;</span>
+        <span class="s2">&quot;Set to 0 to use a minimum buffer size of 1.&quot;</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;prototype&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+<div class="viewcode-block" id="TorchLlmArgs.normalize_max_stats_len">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.TorchLlmArgs.normalize_max_stats_len">[docs]</a>
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s1">&#39;max_stats_len&#39;</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">normalize_max_stats_len</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">v</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">v</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
 
     <span class="n">layer_wise_benchmarks_config</span><span class="p">:</span> <span class="n">LayerwiseBenchmarksConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">default_factory</span><span class="o">=</span><span class="n">LayerwiseBenchmarksConfig</span><span class="p">,</span>
@@ -6156,6 +6503,23 @@ window.runMermaid = runMermaid;</script>
     <span class="nd">@quant_config</span><span class="o">.</span><span class="n">setter</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">quant_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">QuantConfig</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_quant_config</span> <span class="o">=</span> <span class="n">value</span>
+
+<div class="viewcode-block" id="TorchLlmArgs.get_encoder_runtime_sizes">
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.TorchLlmArgs.get_encoder_runtime_sizes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_encoder_runtime_sizes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return encoder runtime batch and token limits.</span>
+
+<span class="sd">        Returns `(encoder_max_batch_size, encoder_max_num_tokens)`, falling</span>
+<span class="sd">        back to the LLM-side `max_batch_size` / `max_num_tokens` when the</span>
+<span class="sd">        encoder-specific knobs are not set.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">encoder_max_batch_size</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder_max_batch_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_batch_size</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">encoder_max_num_tokens</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder_max_num_tokens</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_num_tokens</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
 
     <span class="c1"># TODO: remove backend later</span>
     <span class="n">backend</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;pytorch&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
@@ -6962,9 +7326,9 @@ window.runMermaid = runMermaid;</script>
         <div class="footer-item">
 <div class="extra_footer">
   
-  <p>Last updated on June 27, 2026.</p>
+  <p>Last updated on July 07, 2026.</p>
   
-  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/c25c23f">c25c23f</a>.</p>
+  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/7c8dde8">7c8dde8</a>.</p>
   
 </div></div>
       

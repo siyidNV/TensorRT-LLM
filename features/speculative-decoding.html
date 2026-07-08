@@ -63,7 +63,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.19.0';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = './_static/switcher.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc20';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc21';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -79,7 +79,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.3.0rc20" />
+  <meta name="docsearch:version" content="1.3.0rc21" />
   
     
     <script src="../_static/searchtools.js"></script>
@@ -456,6 +456,7 @@
 <li class="toctree-l1"><a class="reference internal" href="quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sampling.html">Sampling</a></li>
 <li class="toctree-l1"><a class="reference internal" href="additional-outputs.html">Additional Outputs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="post-processor-hook.html">Post-Processing Hook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="guided-decoding.html">Guided Decoding</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="checkpoint-loading.html">Checkpoint Loading</a></li>
@@ -495,6 +496,7 @@
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Blogs</span></p>
 <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../blogs/tech_blog/blog25_Scaling_Video_Generation_Across_NVL72_Rack_with_TensorRT-LLM.html">Scaling Video Generation Across NVL72 rack with TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../blogs/tech_blog/blog24_MoE_as_Dense_GEMM.html">MoE as Dense GEMM: Optimizing Low-Latency MoE Inference on NVIDIA Blackwell</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../blogs/tech_blog/blog23_Joint_Optimization_of_Agent_Applications_and_TensorRT-LLM.html">Joint Optimization of Agent Applications and TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../blogs/tech_blog/blog22_Helix_Parallelism_Scaling_Multi_Million_Token_Decoding_with_KV_Cache_Sharding.html">Helix Parallelism in TensorRT-LLM: Scaling Multi-Million-Token Decoding with KV Cache Sharding</a></li>
@@ -532,9 +534,9 @@
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM">Github Code</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap">Roadmap</a></li>
 </ul>
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Use TensorRT Engine</span></p>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Migration</span></p>
 <ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="../legacy/tensorrt_quickstart.html">LLM API with TensorRT Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../legacy/tensorrt-backend-removal.html">Migration Guide: TensorRT Backend Removed</a></li>
 </ul>
 </div>
 </nav></div>
@@ -586,7 +588,7 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="speculative-decoding">
+  <section id="speculative-decoding">
 <h1>Speculative Decoding<a class="headerlink" href="#speculative-decoding" title="Link to this heading">#</a></h1>
 <p>Speculative decoding is a technique for accelerating LLM inference at low batch sizes. A lightweight drafting mechanism proposes candidate tokens, and the target model verifies them in a single forward pass. Tokens that match are accepted, reducing the number of sequential forward passes needed.</p>
 <section id="quick-start">
@@ -612,7 +614,7 @@
 <section id="eagle-3">
 <h3>EAGLE 3<a class="headerlink" href="#eagle-3" title="Link to this heading">#</a></h3>
 <p>The EAGLE 3 algorithm is described in the paper <a class="reference external" href="https://arxiv.org/pdf/2503.01840">EAGLE-3: Scaling up Inference Acceleration of Large Language Models via Training-Time Test</a>.
-By default, each request uses a single sequence (linear chain) of draft tokens with length <code class="docutils literal notranslate"><span class="pre">max_draft_len</span></code>. Optionally, dynamic tree draft generation can be enabled to improve acceptance rates — see <a class="reference internal" href="#dynamic-tree-mode">Dynamic Tree Mode</a> below.</p>
+By default, each request uses a single sequence (linear chain) of draft tokens with length <code class="docutils literal notranslate"><span class="pre">max_draft_len</span></code>. Optionally, dynamic tree draft generation can be enabled to improve acceptance rates — see <a class="reference internal" href="#dynamic-tree-mode"><span class="xref myst">Dynamic Tree Mode</span></a> below.</p>
 <p>The following draft model checkpoints can be used for EAGLE 3:</p>
 <ul class="simple">
 <li><p>Llama 3 variants: <a class="reference external" href="https://huggingface.co/yuhuili">use the checkpoints from the authors of the original EAGLE 3 paper</a>.</p></li>
@@ -631,7 +633,7 @@ By default, each request uses a single sequence (linear chain) of draft tokens w
 <span class="n">llm</span> <span class="o">=</span> <span class="n">LLM</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">speculative_config</span><span class="o">=</span><span class="n">speculative_config</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>EAGLE 3 can be combined with the <a class="reference internal" href="#suffix-automaton-sa-enhancement">Suffix Automaton enhancement</a> for improved acceptance rates on repetitive content. See the SA section below for details.</p>
+<p>EAGLE 3 can be combined with the <a class="reference internal" href="#suffix-automaton-sa-enhancement"><span class="xref myst">Suffix Automaton enhancement</span></a> for improved acceptance rates on repetitive content. See the SA section below for details.</p>
 <section id="dynamic-tree-mode">
 <h4>Dynamic Tree Mode<a class="headerlink" href="#dynamic-tree-mode" title="Link to this heading">#</a></h4>
 <p>Dynamic tree mode enables tree-structured draft generation for EAGLE 3, where the drafter expands multiple candidate tokens at each layer instead of a single token. This can improve acceptance rates compared to linear drafting at the cost of additional compute per generation step.</p>
@@ -698,7 +700,7 @@ By default, each request uses a single sequence (linear chain) of draft tokens w
 <span class="n">llm</span> <span class="o">=</span> <span class="n">LLM</span><span class="p">(</span><span class="s2">&quot;/path/to/deepseek_model&quot;</span><span class="p">,</span> <span class="n">speculative_config</span><span class="o">=</span><span class="n">speculative_config</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>MTP can be combined with the <a class="reference internal" href="#suffix-automaton-sa-enhancement">Suffix Automaton enhancement</a> for improved acceptance rates on repetitive content. See the SA section below for details.</p>
+<p>MTP can be combined with the <a class="reference internal" href="#suffix-automaton-sa-enhancement"><span class="xref myst">Suffix Automaton enhancement</span></a> for improved acceptance rates on repetitive content. See the SA section below for details.</p>
 </section>
 <section id="pard">
 <h3>PARD<a class="headerlink" href="#pard" title="Link to this heading">#</a></h3>
@@ -717,7 +719,7 @@ By default, each request uses a single sequence (linear chain) of draft tokens w
 <span class="n">llm</span> <span class="o">=</span> <span class="n">LLM</span><span class="p">(</span><span class="s2">&quot;/path/to/target_model&quot;</span><span class="p">,</span> <span class="n">speculative_config</span><span class="o">=</span><span class="n">speculative_config</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>PARD can be combined with the <a class="reference internal" href="#suffix-automaton-sa-enhancement">Suffix Automaton enhancement</a> for improved acceptance rates on repetitive content. See the SA section below for details.</p>
+<p>PARD can be combined with the <a class="reference internal" href="#suffix-automaton-sa-enhancement"><span class="xref myst">Suffix Automaton enhancement</span></a> for improved acceptance rates on repetitive content. See the SA section below for details.</p>
 </section>
 <section id="dflash">
 <h3>DFlash<a class="headerlink" href="#dflash" title="Link to this heading">#</a></h3>
@@ -1009,9 +1011,9 @@ Existing workflows using <code class="docutils literal notranslate"><span class=
         <div class="footer-item">
 <div class="extra_footer">
   
-  <p>Last updated on June 27, 2026.</p>
+  <p>Last updated on July 07, 2026.</p>
   
-  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/c25c23f">c25c23f</a>.</p>
+  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/7c8dde8">7c8dde8</a>.</p>
   
 </div></div>
       
