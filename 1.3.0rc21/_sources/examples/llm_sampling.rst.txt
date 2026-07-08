@@ -1,0 +1,8 @@
+Sampling Techniques Showcase
+============================
+Source https://github.com/NVIDIA/TensorRT-LLM/blob/7c8dde830bac813e23605d47a1d27c92d5437a92/examples/llm-api/llm_sampling.py.
+
+.. literalinclude:: ../../../examples/llm-api/llm_sampling.py
+    :lines: 4-248
+    :language: python
+    :linenos:
