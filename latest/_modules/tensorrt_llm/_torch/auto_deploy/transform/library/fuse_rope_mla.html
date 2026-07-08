@@ -498,7 +498,7 @@ window.runMermaid = runMermaid;</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.19.0';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = './_static/switcher.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc20';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc21';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -512,7 +512,7 @@ window.runMermaid = runMermaid;</script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.3.0rc20" />
+  <meta name="docsearch:version" content="1.3.0rc21" />
   
     
     <script src="../../../../../../_static/searchtools.js"></script>
@@ -885,6 +885,7 @@ window.runMermaid = runMermaid;</script>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../features/quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../features/sampling.html">Sampling</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../features/additional-outputs.html">Additional Outputs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../features/post-processor-hook.html">Post-Processing Hook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../features/guided-decoding.html">Guided Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../features/speculative-decoding.html">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../features/checkpoint-loading.html">Checkpoint Loading</a></li>
@@ -924,6 +925,7 @@ window.runMermaid = runMermaid;</script>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Blogs</span></p>
 <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../blogs/tech_blog/blog25_Scaling_Video_Generation_Across_NVL72_Rack_with_TensorRT-LLM.html">Scaling Video Generation Across NVL72 rack with TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../blogs/tech_blog/blog24_MoE_as_Dense_GEMM.html">MoE as Dense GEMM: Optimizing Low-Latency MoE Inference on NVIDIA Blackwell</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../blogs/tech_blog/blog23_Joint_Optimization_of_Agent_Applications_and_TensorRT-LLM.html">Joint Optimization of Agent Applications and TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../../blogs/tech_blog/blog22_Helix_Parallelism_Scaling_Multi_Million_Token_Decoding_with_KV_Cache_Sharding.html">Helix Parallelism in TensorRT-LLM: Scaling Multi-Million-Token Decoding with KV Cache Sharding</a></li>
@@ -961,9 +963,9 @@ window.runMermaid = runMermaid;</script>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM">Github Code</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap">Roadmap</a></li>
 </ul>
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Use TensorRT Engine</span></p>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Migration</span></p>
 <ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="../../../../../../legacy/tensorrt_quickstart.html">LLM API with TensorRT Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../../../legacy/tensorrt-backend-removal.html">Migration Guide: TensorRT Backend Removed</a></li>
 </ul>
 </div>
 </nav></div>
@@ -1057,6 +1059,7 @@ window.runMermaid = runMermaid;</script>
 <span class="kn">from</span><span class="w"> </span><span class="nn">torch.fx</span><span class="w"> </span><span class="kn">import</span> <span class="n">GraphModule</span><span class="p">,</span> <span class="n">Node</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">...custom_ops.mla.rope_metadata</span><span class="w"> </span><span class="kn">import</span> <span class="n">_TRTLLM_MLA_ROPE_INFO_KEY</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">...models.custom.mla_rope_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_gptj_layout</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">...models.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelFactory</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">...shim.interface</span><span class="w"> </span><span class="kn">import</span> <span class="n">CachedSequenceInterface</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">...utils.logger</span><span class="w"> </span><span class="kn">import</span> <span class="n">ad_logger</span>
@@ -1143,14 +1146,12 @@ window.runMermaid = runMermaid;</script>
 <span class="sd">    if construction fails.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">is_op</span><span class="p">(</span><span class="n">rope_node</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">auto_deploy</span><span class="o">.</span><span class="n">torch_rope_with_explicit_cos_sin</span><span class="p">):</span>
-        <span class="c1"># torch_rope(q, k, cos, sin, unsqueeze_dim)</span>
+        <span class="c1"># NeoX-doubled cos/sin [max_pos, qk_rope_head_dim].</span>
         <span class="n">cos_node</span> <span class="o">=</span> <span class="n">rope_node</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
         <span class="n">sin_node</span> <span class="o">=</span> <span class="n">rope_node</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
         <span class="n">cos_buf</span> <span class="o">=</span> <span class="n">_trace_to_buffer</span><span class="p">(</span><span class="n">gm</span><span class="p">,</span> <span class="n">cos_node</span><span class="p">)</span>
         <span class="n">sin_buf</span> <span class="o">=</span> <span class="n">_trace_to_buffer</span><span class="p">(</span><span class="n">gm</span><span class="p">,</span> <span class="n">sin_node</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">cos_buf</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">sin_buf</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="c1"># cos_buf/sin_buf are already in NeoX-doubled format</span>
-            <span class="c1"># [max_pos, head_dim] where head_dim = qk_rope_head_dim.</span>
             <span class="c1"># Stack interleaved [cos_0, sin_0, cos_1, sin_1, ...] as expected</span>
             <span class="c1"># by mla_rope_generation.</span>
             <span class="n">result</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">cos_buf</span><span class="o">.</span><span class="n">float</span><span class="p">(),</span> <span class="n">sin_buf</span><span class="o">.</span><span class="n">float</span><span class="p">()],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
@@ -1465,9 +1466,23 @@ window.runMermaid = runMermaid;</script>
             <span class="n">ad_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;No torch_mla nodes found; skipping.&quot;</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">gm</span><span class="p">,</span> <span class="n">TransformInfo</span><span class="p">(</span><span class="n">skipped</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;no MLA nodes&quot;</span><span class="p">)</span>
 
+        <span class="c1"># Whether MLA RoPE weights are in native GPTJ layout (model skipped the</span>
+        <span class="c1"># de-interleave load hook) — if so, _undo_rope_deinterleave must NOT run.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">_model_config</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">factory</span><span class="o">.</span><span class="n">_get_model_config</span><span class="p">()</span>
+            <span class="n">already_gptj</span> <span class="o">=</span> <span class="n">is_gptj_layout</span><span class="p">(</span><span class="n">_model_config</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">AssertionError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="n">already_gptj</span> <span class="o">=</span> <span class="kc">False</span>
+
         <span class="c1"># Try to trace the RoPE pattern from the first MLA node.</span>
         <span class="n">trace_result</span> <span class="o">=</span> <span class="n">_trace_rope_node</span><span class="p">(</span><span class="n">mla_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
         <span class="k">if</span> <span class="n">trace_result</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">already_gptj</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                    <span class="s2">&quot;GPTJ-layout MLA model requires RoPE fused into trtllm_mla, but the RoPE &quot;</span>
+                    <span class="s2">&quot;pattern could not be traced from torch_mla. The eager rotation on &quot;</span>
+                    <span class="s2">&quot;native-layout weights is incorrect; do not disable this fusion.&quot;</span>
+                <span class="p">)</span>
             <span class="n">ad_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Could not trace RoPE node from torch_mla; skipping fusion.&quot;</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">gm</span><span class="p">,</span> <span class="n">TransformInfo</span><span class="p">(</span><span class="n">skipped</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;no rope pattern&quot;</span><span class="p">)</span>
 
@@ -1476,6 +1491,12 @@ window.runMermaid = runMermaid;</script>
         <span class="c1"># Build the rotary_cos_sin tensor from the model&#39;s RoPE buffers.</span>
         <span class="n">rotary_cos_sin</span> <span class="o">=</span> <span class="n">_build_rotary_cos_sin_from_buffers</span><span class="p">(</span><span class="n">gm</span><span class="p">,</span> <span class="n">rope_node</span><span class="p">,</span> <span class="n">factory</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">rotary_cos_sin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">already_gptj</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                    <span class="s2">&quot;GPTJ-layout MLA model requires RoPE fused into trtllm_mla, but &quot;</span>
+                    <span class="s2">&quot;rotary_cos_sin could not be constructed. The eager rotation on &quot;</span>
+                    <span class="s2">&quot;native-layout weights is incorrect; do not disable this fusion.&quot;</span>
+                <span class="p">)</span>
             <span class="n">ad_logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Could not construct rotary_cos_sin; skipping fusion.&quot;</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">gm</span><span class="p">,</span> <span class="n">TransformInfo</span><span class="p">(</span><span class="n">skipped</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;no rotary_cos_sin&quot;</span><span class="p">)</span>
 
@@ -1500,6 +1521,13 @@ window.runMermaid = runMermaid;</script>
             <span class="n">rewired_mla_nodes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mla_node</span><span class="p">)</span>
             <span class="n">replaced</span> <span class="o">+=</span> <span class="mi">1</span>
 
+        <span class="k">if</span> <span class="n">already_gptj</span> <span class="ow">and</span> <span class="n">replaced</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mla_nodes</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;GPTJ-layout MLA model: RoPE fused into only </span><span class="si">{</span><span class="n">replaced</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">mla_nodes</span><span class="p">)</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="s2">&quot;MLA node(s); the rest would run eager rotation on native-layout weights &quot;</span>
+                <span class="s2">&quot;(incorrect). Do not disable fuse_rope_into_trtllm_mla for this model.&quot;</span>
+            <span class="p">)</span>
+
         <span class="c1"># Stash rope metadata on rewired MLA nodes for cache_init.</span>
         <span class="k">for</span> <span class="n">mla_node</span> <span class="ow">in</span> <span class="n">rewired_mla_nodes</span><span class="p">:</span>
             <span class="n">mla_node</span><span class="o">.</span><span class="n">meta</span><span class="p">[</span><span class="n">_TRTLLM_MLA_ROPE_INFO_KEY</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
@@ -1512,9 +1540,12 @@ window.runMermaid = runMermaid;</script>
 
         <span class="c1"># Reverse the NeoX weight de-interleave so projected data arrives in</span>
         <span class="c1"># GPTJ layout — matching what mla_rope_generation expects.</span>
-        <span class="c1"># The is_neox flag is always True when matching torch_rope_with_explicit_cos_sin</span>
-        <span class="c1"># (which uses the NeoX/split-half rotation style).</span>
-        <span class="n">n_fixed</span> <span class="o">=</span> <span class="n">_undo_rope_deinterleave</span><span class="p">(</span><span class="n">gm</span><span class="p">,</span> <span class="n">factory</span><span class="p">,</span> <span class="n">shared_config</span><span class="p">)</span>
+        <span class="c1"># Skip when the graph was already in GPTJ layout (detected above before</span>
+        <span class="c1"># the rope nodes were consumed): those models never de-interleaved.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">already_gptj</span><span class="p">:</span>
+            <span class="n">n_fixed</span> <span class="o">=</span> <span class="n">_undo_rope_deinterleave</span><span class="p">(</span><span class="n">gm</span><span class="p">,</span> <span class="n">factory</span><span class="p">,</span> <span class="n">shared_config</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n_fixed</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="n">ad_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">&quot;Reversed RoPE weight de-interleave on </span><span class="si">{</span><span class="n">n_fixed</span><span class="si">}</span><span class="s2"> tensors &quot;</span>
             <span class="s2">&quot;(NeoX→GPTJ) for fused decode kernel.&quot;</span>
@@ -1633,9 +1664,9 @@ window.runMermaid = runMermaid;</script>
         <div class="footer-item">
 <div class="extra_footer">
   
-  <p>Last updated on June 27, 2026.</p>
+  <p>Last updated on July 07, 2026.</p>
   
-  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/c25c23f">c25c23f</a>.</p>
+  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/7c8dde8">7c8dde8</a>.</p>
   
 </div></div>
       

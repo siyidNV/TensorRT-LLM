@@ -498,7 +498,7 @@ window.runMermaid = runMermaid;</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.19.0';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = './_static/switcher.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc20';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.3.0rc21';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -512,7 +512,7 @@ window.runMermaid = runMermaid;</script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="1.3.0rc20" />
+  <meta name="docsearch:version" content="1.3.0rc21" />
   
     
     <script src="../../../_static/searchtools.js"></script>
@@ -885,6 +885,7 @@ window.runMermaid = runMermaid;</script>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/sampling.html">Sampling</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/additional-outputs.html">Additional Outputs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../features/post-processor-hook.html">Post-Processing Hook</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/guided-decoding.html">Guided Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/speculative-decoding.html">Speculative Decoding</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../features/checkpoint-loading.html">Checkpoint Loading</a></li>
@@ -924,6 +925,7 @@ window.runMermaid = runMermaid;</script>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Blogs</span></p>
 <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog25_Scaling_Video_Generation_Across_NVL72_Rack_with_TensorRT-LLM.html">Scaling Video Generation Across NVL72 rack with TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog24_MoE_as_Dense_GEMM.html">MoE as Dense GEMM: Optimizing Low-Latency MoE Inference on NVIDIA Blackwell</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog23_Joint_Optimization_of_Agent_Applications_and_TensorRT-LLM.html">Joint Optimization of Agent Applications and TensorRT-LLM</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../blogs/tech_blog/blog22_Helix_Parallelism_Scaling_Multi_Million_Token_Decoding_with_KV_Cache_Sharding.html">Helix Parallelism in TensorRT-LLM: Scaling Multi-Million-Token Decoding with KV Cache Sharding</a></li>
@@ -961,9 +963,9 @@ window.runMermaid = runMermaid;</script>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM">Github Code</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap">Roadmap</a></li>
 </ul>
-<p aria-level="2" class="caption" role="heading"><span class="caption-text">Use TensorRT Engine</span></p>
+<p aria-level="2" class="caption" role="heading"><span class="caption-text">Migration</span></p>
 <ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="../../../legacy/tensorrt_quickstart.html">LLM API with TensorRT Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../legacy/tensorrt-backend-removal.html">Migration Guide: TensorRT Backend Removed</a></li>
 </ul>
 </div>
 </nav></div>
@@ -1111,8 +1113,6 @@ window.runMermaid = runMermaid;</script>
     <span class="n">RuntimeDefaultsIn</span> <span class="o">=</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">RuntimeDefaults</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]]</span>
 
 
-<div class="viewcode-block" id="SpeculativeDecodingMode">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.SpeculativeDecodingMode">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">SpeculativeDecodingMode</span><span class="p">(</span><span class="n">IntFlag</span><span class="p">):</span>
     <span class="c1"># [WARNING] KEEP BELOW DEFINITION IN SYNC WITH cpp/tensorrt_llm/runtime/speculativeDecodingMode.h</span>
     <span class="n">NONE</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
@@ -1126,8 +1126,6 @@ window.runMermaid = runMermaid;</script>
     <span class="n">SAVE_HIDDEN_STATES</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
     <span class="n">AUTO</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
 
-<div class="viewcode-block" id="SpeculativeDecodingMode.from_arguments">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.SpeculativeDecodingMode.from_arguments">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_arguments</span><span class="p">(</span><span class="n">args</span><span class="p">:</span> <span class="n">argparse</span><span class="o">.</span><span class="n">Namespace</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">speculative_decoding_mode</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1151,13 +1149,11 @@ window.runMermaid = runMermaid;</script>
         <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">speculative_decoding_mode</span> <span class="o">==</span> <span class="s2">&quot;save_hidden_states&quot;</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">SpeculativeDecodingMode</span><span class="o">.</span><span class="n">SAVE_HIDDEN_STATES</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">assert</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;Unknown speculative_decoding_mode &quot;</span> <span class="o">+</span> <span class="n">args</span><span class="o">.</span><span class="n">speculative_decoding_mode</span></div>
-</div>
-
+            <span class="k">assert</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;Unknown speculative_decoding_mode &quot;</span> <span class="o">+</span> <span class="n">args</span><span class="o">.</span><span class="n">speculative_decoding_mode</span>
 
 
 <div class="viewcode-block" id="QuantConfig">
-<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.models.QuantConfig">[docs]</a>
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.QuantConfig">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">QuantConfig</span><span class="p">(</span><span class="n">StrictBaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Serializable quantization configuration class, part of the PretrainedConfig.&quot;&quot;&quot;</span>
 
@@ -1278,7 +1274,7 @@ window.runMermaid = runMermaid;</script>
             <span class="k">return</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="QuantConfig.is_module_excluded_from_quantization">
-<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.models.QuantConfig.is_module_excluded_from_quantization">[docs]</a>
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.QuantConfig.is_module_excluded_from_quantization">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">is_module_excluded_from_quantization</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if the module is excluded from quantization.</span>
 
@@ -1287,6 +1283,13 @@ window.runMermaid = runMermaid;</script>
 <span class="sd">        a ``re:`` prefixed regex. The ancestor walk means listing a parent</span>
 <span class="sd">        module (without a glob suffix) implicitly excludes all of its</span>
 <span class="sd">        children.</span>
+
+<span class="sd">        A trailing ``.*`` subtree wildcard also matches the parent node</span>
+<span class="sd">        itself, so an entry like ``model.layers.1.*`` excludes both</span>
+<span class="sd">        ``model.layers.1`` and everything under it. This keeps a subtree</span>
+<span class="sd">        exclusion consistent regardless of whether the producer wrote it as</span>
+<span class="sd">        ``model.layers.1`` / ``model.layers.1*`` / ``model.layers.1.*``</span>
+<span class="sd">        (modelopt mixes these forms within a single checkpoint).</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            name (str): The name of the module.</span>
@@ -1304,6 +1307,9 @@ window.runMermaid = runMermaid;</script>
                         <span class="k">return</span> <span class="kc">True</span>
                 <span class="k">elif</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">fnmatchcase</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">exclude_module</span><span class="p">):</span>
                     <span class="k">return</span> <span class="kc">True</span>
+                <span class="k">elif</span> <span class="n">exclude_module</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.*&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">fnmatchcase</span><span class="p">(</span>
+                        <span class="n">candidate</span><span class="p">,</span> <span class="n">exclude_module</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">]):</span>
+                    <span class="k">return</span> <span class="kc">True</span>
             <span class="k">if</span> <span class="s1">&#39;.&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">candidate</span><span class="p">:</span>
                 <span class="k">return</span> <span class="kc">False</span>
             <span class="n">candidate</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span></div>
@@ -1312,7 +1318,7 @@ window.runMermaid = runMermaid;</script>
     <span class="c1"># NOTE: this is kept for backward compatibility with external libraries (e.g., modelopt).</span>
     <span class="c1"># For new code, prefer directly using QuantConfig(**config) instead.</span>
 <div class="viewcode-block" id="QuantConfig.from_dict">
-<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.models.QuantConfig.from_dict">[docs]</a>
+<a class="viewcode-back" href="../../../llm-api/reference.html#tensorrt_llm.llmapi.QuantConfig.from_dict">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;QuantConfig&#39;</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a QuantConfig instance from a dict.</span>
@@ -1402,8 +1408,6 @@ window.runMermaid = runMermaid;</script>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
 
 
-<div class="viewcode-block" id="PretrainedConfig">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">PretrainedConfig</span><span class="p">:</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
@@ -1497,15 +1501,12 @@ window.runMermaid = runMermaid;</script>
             <span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="n">err</span>
 
-<div class="viewcode-block" id="PretrainedConfig.create_runtime_defaults">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.create_runtime_defaults">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">create_runtime_defaults</span><span class="p">(</span>
             <span class="n">defaults</span><span class="p">:</span> <span class="s2">&quot;RuntimeDefaultsIn&quot;</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RuntimeDefaults</span><span class="p">]:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">defaults</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
             <span class="k">return</span> <span class="n">RuntimeDefaults</span><span class="p">(</span><span class="o">**</span><span class="n">defaults</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">defaults</span></div>
-
+        <span class="k">return</span> <span class="n">defaults</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">kv_dtype</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -1520,26 +1521,18 @@ window.runMermaid = runMermaid;</script>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span>
 
-<div class="viewcode-block" id="PretrainedConfig.set_if_not_exist">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.set_if_not_exist">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">set_if_not_exist</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
-            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></div>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.from_dict">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.from_dict">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
         <span class="c1"># Maybe we need AutoConfig for this</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">MODEL_MAP</span>
         <span class="n">model_cls</span> <span class="o">=</span> <span class="n">MODEL_MAP</span><span class="p">[</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;architecture&#39;</span><span class="p">]]</span>
         <span class="n">config_cls</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model_cls</span><span class="p">,</span> <span class="s1">&#39;config_class&#39;</span><span class="p">,</span> <span class="bp">cls</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">config_cls</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="n">config_cls</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.to_dict">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.to_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">output</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">)</span>
 
@@ -1548,11 +1541,8 @@ window.runMermaid = runMermaid;</script>
         <span class="n">output</span><span class="p">[</span><span class="s1">&#39;mapping&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;rank&#39;</span><span class="p">)</span>
         <span class="n">output</span><span class="p">[</span><span class="s1">&#39;quantization&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">quantization</span><span class="o">.</span><span class="n">model_dump</span><span class="p">()</span>
 
-        <span class="k">return</span> <span class="n">output</span></div>
+        <span class="k">return</span> <span class="n">output</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.from_json_file">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.from_json_file">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_json_file</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_file</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
@@ -1567,25 +1557,16 @@ window.runMermaid = runMermaid;</script>
                 <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
                     <span class="sa">f</span><span class="s2">&quot;Encounter error &#39;</span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&#39; for read quantization config &#39;</span><span class="si">{</span><span class="n">layer_config_path</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
                 <span class="p">)</span>
-        <span class="k">return</span> <span class="n">obj</span></div>
+        <span class="k">return</span> <span class="n">obj</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.from_checkpoint">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.from_checkpoint">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_checkpoint</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">ckpt_dir</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">from_json_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ckpt_dir</span><span class="p">,</span> <span class="s1">&#39;config.json&#39;</span><span class="p">))</span></div>
+        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">from_json_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ckpt_dir</span><span class="p">,</span> <span class="s1">&#39;config.json&#39;</span><span class="p">))</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.to_json_file">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.to_json_file">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_json_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span></div>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.to_layer_quant_config">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.to_layer_quant_config">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_layer_quant_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_file</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">config</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
@@ -1601,8 +1582,7 @@ window.runMermaid = runMermaid;</script>
                         <span class="k">assert</span> <span class="n">quant_cfg</span> <span class="o">==</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;quantized_layers&quot;</span><span class="p">][</span>
                             <span class="n">moe_name</span><span class="p">],</span> <span class="s2">&quot;MoE module needs to have the same quantization format for non-router sub-modules&quot;</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">quantization</span> <span class="o">=</span> <span class="n">LayerQuantConfig</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">config</span><span class="p">)</span></div>
-
+        <span class="bp">self</span><span class="o">.</span><span class="n">quantization</span> <span class="o">=</span> <span class="n">LayerQuantConfig</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">quant_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -1615,34 +1595,21 @@ window.runMermaid = runMermaid;</script>
     <span class="k">def</span><span class="w"> </span><span class="nf">_get_quant_cfg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">quantization</span><span class="o">.</span><span class="n">_get_quant_cfg</span><span class="p">(</span><span class="n">module_name</span><span class="p">)</span>
 
-<div class="viewcode-block" id="PretrainedConfig.set_rank">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.set_rank">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">set_rank</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rank</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="n">rank</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="n">rank</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.get_config_group">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.get_config_group">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_config_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group_cls</span><span class="p">:</span> <span class="s2">&quot;Type[CG]&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;CG&quot;</span><span class="p">:</span>
         <span class="n">cfg</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">group_cls</span><span class="o">.</span><span class="n">keys</span><span class="p">()}</span>
-        <span class="k">return</span> <span class="n">group_cls</span><span class="p">(</span><span class="o">**</span><span class="n">cfg</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="n">group_cls</span><span class="p">(</span><span class="o">**</span><span class="n">cfg</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.has_config_group">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.has_config_group">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">has_config_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group_cls</span><span class="p">:</span> <span class="s2">&quot;Type[CG]&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;bool&quot;</span><span class="p">:</span>
-        <span class="k">return</span> <span class="nb">all</span><span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">group_cls</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span></div>
+        <span class="k">return</span> <span class="nb">all</span><span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">group_cls</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
 
-
-<div class="viewcode-block" id="PretrainedConfig.for_each_rank">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedConfig.for_each_rank">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">for_each_rank</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Generator[Self, None, None]&quot;</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">rank</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">world_size</span><span class="p">):</span>
             <span class="n">config_copy</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
             <span class="n">config_copy</span><span class="o">.</span><span class="n">set_rank</span><span class="p">(</span><span class="n">rank</span><span class="p">)</span>
-            <span class="k">yield</span> <span class="n">config_copy</span></div>
-</div>
-
+            <span class="k">yield</span> <span class="n">config_copy</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">DecoderLayerList</span><span class="p">(</span><span class="n">ModuleList</span><span class="p">):</span>
@@ -1763,8 +1730,6 @@ window.runMermaid = runMermaid;</script>
         <span class="k">return</span> <span class="n">obj</span>
 
 
-<div class="viewcode-block" id="PretrainedModel">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">PretrainedModel</span><span class="p">(</span><span class="n">Module</span><span class="p">,</span>
                       <span class="n">GenerationMixin</span><span class="p">,</span>
                       <span class="n">TopModelMixin</span><span class="p">,</span>
@@ -1784,32 +1749,21 @@ window.runMermaid = runMermaid;</script>
         <span class="n">optimize_model</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span> <span class="n">use_parallel_embedding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">use_parallel_embedding</span><span class="p">)</span>
 
-<div class="viewcode-block" id="PretrainedModel.release">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.release">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">release</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">release_gc</span><span class="p">()</span></div>
-
+        <span class="n">release_gc</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
 
-<div class="viewcode-block" id="PretrainedModel.check_config">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.check_config">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">check_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="si">}</span><span class="s2"> is an abstract class. Only classes inheriting this class can be called.&quot;</span>
-        <span class="p">)</span></div>
+        <span class="p">)</span>
 
-
-<div class="viewcode-block" id="PretrainedModel.from_config">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.from_config">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_config</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">PretrainedConfig</span><span class="p">):</span>
-        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">config</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="PretrainedModel.from_checkpoint">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.from_checkpoint">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_checkpoint</span><span class="p">(</span>
         <span class="bp">cls</span><span class="p">,</span>
@@ -1847,11 +1801,8 @@ window.runMermaid = runMermaid;</script>
                                      <span class="n">from_pruned</span><span class="o">=</span><span class="n">is_checkpoint_pruned</span><span class="p">)</span>
         <span class="n">model</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
         <span class="n">model</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">from_pruned</span><span class="o">=</span><span class="n">is_checkpoint_pruned</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">model</span></div>
+        <span class="k">return</span> <span class="n">model</span>
 
-
-<div class="viewcode-block" id="PretrainedModel.load">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.load">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">from_pruned</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
         <span class="n">required_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">param</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">named_parameters</span><span class="p">():</span>
@@ -1889,11 +1840,8 @@ window.runMermaid = runMermaid;</script>
                         <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
                             <span class="sa">f</span><span class="s2">&quot;Encounter error &#39;</span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&#39; for parameter &#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="n">param</span><span class="o">.</span><span class="n">set_value_or_dummy</span><span class="p">(</span><span class="n">weights</span><span class="p">[</span><span class="n">name</span><span class="p">])</span></div>
+                    <span class="n">param</span><span class="o">.</span><span class="n">set_value_or_dummy</span><span class="p">(</span><span class="n">weights</span><span class="p">[</span><span class="n">name</span><span class="p">])</span>
 
-
-<div class="viewcode-block" id="PretrainedModel.save_checkpoint">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.save_checkpoint">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">save_checkpoint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">save_config</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
         <span class="c1"># multiple ranks could share same config.json, so adding a save_config parameter to let user avoiding writing config.json in all ranks</span>
         <span class="n">rank</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">rank</span>
@@ -1911,11 +1859,8 @@ window.runMermaid = runMermaid;</script>
         <span class="n">safetensors</span><span class="o">.</span><span class="n">torch</span><span class="o">.</span><span class="n">save_file</span><span class="p">(</span>
             <span class="n">weights</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;rank</span><span class="si">{</span><span class="n">rank</span><span class="si">}</span><span class="s1">.safetensors&#39;</span><span class="p">))</span>
         <span class="k">if</span> <span class="n">save_config</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">to_json_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="s1">&#39;config.json&#39;</span><span class="p">))</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">to_json_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="s1">&#39;config.json&#39;</span><span class="p">))</span>
 
-
-<div class="viewcode-block" id="PretrainedModel.prepare_inputs">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.prepare_inputs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">prepare_inputs</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
         <span class="n">max_batch_size</span><span class="p">,</span>
@@ -2059,11 +2004,8 @@ window.runMermaid = runMermaid;</script>
         <span class="k">if</span> <span class="n">model_inputs</span><span class="p">[</span><span class="s1">&#39;mrope_params&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">result</span><span class="p">[</span><span class="s1">&#39;mrope_params&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">model_inputs</span><span class="p">[</span><span class="s1">&#39;mrope_params&#39;</span><span class="p">]</span>
 
-        <span class="k">return</span> <span class="n">result</span></div>
+        <span class="k">return</span> <span class="n">result</span>
 
-
-<div class="viewcode-block" id="PretrainedModel.quantize">
-<a class="viewcode-back" href="../../../legacy/python-api/tensorrt_llm.models.html#tensorrt_llm.models.PretrainedModel.quantize">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">quantize</span><span class="p">(</span>
         <span class="bp">cls</span><span class="p">,</span>
@@ -2119,9 +2061,7 @@ window.runMermaid = runMermaid;</script>
             <span class="n">cp_size</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">cp_size</span><span class="p">,</span>
             <span class="n">seed</span><span class="o">=</span><span class="n">random_seed</span><span class="p">,</span>
             <span class="n">tokenizer_max_seq_length</span><span class="o">=</span><span class="n">tokenizer_max_seq_length</span><span class="p">,</span>
-        <span class="p">)</span></div>
-</div>
-
+        <span class="p">)</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">DecoderModelForCausalLM</span><span class="p">(</span><span class="n">PretrainedModel</span><span class="p">):</span>
@@ -3184,9 +3124,9 @@ window.runMermaid = runMermaid;</script>
         <div class="footer-item">
 <div class="extra_footer">
   
-  <p>Last updated on June 27, 2026.</p>
+  <p>Last updated on July 07, 2026.</p>
   
-  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/c25c23f">c25c23f</a>.</p>
+  <p>This page is generated by TensorRT-LLM commit <a href="https://github.com/NVIDIA/TensorRT-LLM/tree/7c8dde8">7c8dde8</a>.</p>
   
 </div></div>
       
