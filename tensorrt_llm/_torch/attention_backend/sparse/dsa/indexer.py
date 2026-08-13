@@ -686,13 +686,13 @@ class Indexer(nn.Module):
         self.use_cute_dsl_paged_mqa_logits = (
             sparse_params.use_cute_dsl_paged_mqa_logits and IS_CUTLASS_DSL_AVAILABLE
         )
-        # GVR emission-assisted decode (opt-in, experimental): the FP4 indexer
-        # epilogue emits candidates for the top-k (see gvr_emission / gvr_routing).
+        # GVR emission-assisted decode (opt-in, experimental): the FP4/FP8
+        # indexer epilogue emits candidates for the top-k (see gvr_emission /
+        # gvr_routing).
         self.use_gvr_emission = (
             os.environ.get("TRTLLM_GVR_EMISSION", "0") == "1"
             and self.use_cute_dsl_topk
             and self.use_cute_dsl_paged_mqa_logits
-            and self.use_fp4
         )
         self._gvr_emission = None  # lazy GvrEmissionState (first decode step)
         self._gvr_route = None
@@ -1756,6 +1756,45 @@ class Indexer(nn.Module):
                     metadata.dsl_expand_factor > 1
                     and next_n == metadata.dsl_expand_factor * metadata.dsl_atom
                 )
+
+                gvr_emit_kwargs = {}
+                # one step gate shared with the consume branch below:
+                # emitting for a step the top-k cannot consume only
+                # churns the closed-loop state
+                gvr_step_ok = (
+                    self.use_gvr_emission
+                    and use_custom_topk
+                    and next_n == 1
+                    and not dsl_atom_split
+                    and num_gen_tokens <= 256
+                )
+                if gvr_step_ok:
+                    st = self._ensure_gvr_emission(metadata, q_decode.device)
+                    # indexer_max_seq_len is already the compressed length
+                    # (get_indexer_max_seq_len divides); do not divide again.
+                    # routing N is the ENGINE-STATIC max (graph capture
+                    # bakes the tier in); short live rows in a long-max
+                    # engine run assist machinery the planner would refuse
+                    # at their true length - exactness holds via the
+                    # in-kernel guards, the tax is routed pessimistically
+                    emit_tier, self._gvr_route = st.plan(
+                        batch_size,
+                        indexer_max_seq_len,
+                        torch.cuda.get_device_properties(q_decode.device).multi_processor_count,
+                        compress_ratio=max(self.compress_ratio, 1),
+                    )
+                    if emit_tier in ("counts", "list", "rungs"):
+                        st.update_seed_rows(batch_size, emit_tier)
+                    if emit_tier in ("counts", "list"):
+                        gvr_emit_kwargs = st.indexer_emit_kwargs(emit_tier, batch_size)
+                    if self._gvr_route.attach_block_max or emit_tier in (
+                        "counts",
+                        "list",
+                    ):
+                        gvr_emit_kwargs["block_max_out"] = st.ensure_block_max(indexer_max_seq_len)[
+                            :batch_size
+                        ]
+
                 if self.use_fp4:
                     # FP4 DSL signature splits DG's (q, sf_q) tuple into two
                     # separate args and requires q.dtype == uint8 (q_decode
@@ -1779,43 +1818,6 @@ class Indexer(nn.Module):
                         dsl_block_table = metadata.block_table_expanded[:exp_B]
                         dsl_schedule_meta = metadata.scheduler_metadata_buffer_expanded
 
-                    gvr_emit_kwargs = {}
-                    # one step gate shared with the consume branch below:
-                    # emitting for a step the top-k cannot consume only
-                    # churns the closed-loop state
-                    gvr_step_ok = (
-                        self.use_gvr_emission
-                        and use_custom_topk
-                        and next_n == 1
-                        and not dsl_atom_split
-                        and num_gen_tokens <= 256
-                    )
-                    if gvr_step_ok:
-                        st = self._ensure_gvr_emission(metadata, q_fp8.device)
-                        # indexer_max_seq_len is already the compressed length
-                        # (get_indexer_max_seq_len divides); do not divide again.
-                        # routing N is the ENGINE-STATIC max (graph capture
-                        # bakes the tier in); short live rows in a long-max
-                        # engine run assist machinery the planner would refuse
-                        # at their true length - exactness holds via the
-                        # in-kernel guards, the tax is routed pessimistically
-                        emit_tier, self._gvr_route = st.plan(
-                            batch_size,
-                            indexer_max_seq_len,
-                            torch.cuda.get_device_properties(q_fp8.device).multi_processor_count,
-                            compress_ratio=max(self.compress_ratio, 1),
-                        )
-                        if emit_tier in ("counts", "list", "rungs"):
-                            st.update_seed_rows(batch_size, emit_tier)
-                        if emit_tier in ("counts", "list"):
-                            gvr_emit_kwargs = st.indexer_emit_kwargs(emit_tier, batch_size)
-                        if self._gvr_route.attach_block_max or emit_tier in (
-                            "counts",
-                            "list",
-                        ):
-                            gvr_emit_kwargs["block_max_out"] = st.ensure_block_max(
-                                indexer_max_seq_len
-                            )[:batch_size]
                     logits_decode = torch.ops.trtllm.cute_dsl_fp4_paged_mqa_logits(
                         dsl_q,
                         decode_q_scale,
@@ -1853,6 +1855,7 @@ class Indexer(nn.Module):
                         fp8_block_table,
                         fp8_schedule_meta,
                         indexer_max_seq_len,
+                        **gvr_emit_kwargs,
                     )
             else:
                 decode_q_scale = (
