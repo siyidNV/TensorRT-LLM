@@ -8079,12 +8079,13 @@ if IS_CUTLASS_DSL_AVAILABLE:
                      seed_packed=False,
                      emit_cand_bucketed=False,
                      accept_cap=8192,
-                     cand_cap=0):
+                     cand_cap=0,
+                     skip_logits_store=False):
             """Compile kernel using fake tensors + TVM FFI."""
             key = (compute_block_kv, phys_block_kv, num_heads, head_dim, next_n,
                    num_sms, num_epi_subtiles, epi_dtype, acc_dtype,
                    output_dtype, emit_block_meta, emit_seed_counts, seed_packed,
-                   emit_cand_bucketed, accept_cap, cand_cap)
+                   emit_cand_bucketed, accept_cap, cand_cap, skip_logits_store)
             if key in cls.kernel_cache:
                 return
 
@@ -8205,6 +8206,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
                 emit_cand_bucketed=emit_cand_bucketed,
                 accept_cap=accept_cap,
                 cand_cap=cand_cap,
+                skip_logits_store=skip_logits_store,
             )
 
             compiled = cute.compile(
@@ -8254,6 +8256,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
             seed_counts_out: Optional[torch.Tensor] = None,
             emit_cand_bucketed: bool = False,
             accept_cap: int = 8192,
+            skip_logits_store: bool = False,
             cand_out: Optional[torch.Tensor] = None,
             cand_idx_out: Optional[torch.Tensor] = None,
             cand_ctl_out: Optional[torch.Tensor] = None,
@@ -8362,6 +8365,9 @@ if IS_CUTLASS_DSL_AVAILABLE:
                 seed_thr = None
                 seed_counts_out = None
             cand_cap = 0
+            assert not (skip_logits_store and not emit_cand_bucketed), (
+                "skip_logits_store requires emit_cand_bucketed (the list is "
+                "the only output; caller owns the void->rerun fallback)")
             if emit_cand_bucketed:
                 assert emit_seed_counts, (
                     "emit_cand_bucketed requires emit_seed_counts")
@@ -8405,7 +8411,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
             key = (compute_block_kv, phys_block_kv, H, D, next_n, num_sms,
                    num_epi_subtiles, epi_dtype, acc_dtype, output_dtype,
                    emit_block_meta, emit_seed_counts, seed_packed,
-                   emit_cand_bucketed, accept_cap, cand_cap)
+                   emit_cand_bucketed, accept_cap, cand_cap, skip_logits_store)
             if key not in cls.kernel_cache:
                 cls._compile(compute_block_kv,
                              phys_block_kv,
@@ -8422,7 +8428,8 @@ if IS_CUTLASS_DSL_AVAILABLE:
                              seed_packed=seed_packed,
                              emit_cand_bucketed=emit_cand_bucketed,
                              accept_cap=accept_cap,
-                             cand_cap=cand_cap)
+                             cand_cap=cand_cap,
+                             skip_logits_store=skip_logits_store)
             compiled = cls.kernel_cache[key]
 
             # FP8 q needs uint8 view to match compile-time dtype
@@ -8465,6 +8472,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
         cand_ctl_out: Optional[torch.Tensor] = None,
         cand_cur_out: Optional[torch.Tensor] = None,
         accept_cap: int = 8192,
+        skip_logits_store: bool = False,
     ) -> torch.Tensor:
         if not is_sm_100f():
             raise ValueError(
@@ -8503,6 +8511,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
             seed_thr=seed_thr,
             emit_cand_bucketed=cand_out is not None,
             accept_cap=accept_cap,
+            skip_logits_store=skip_logits_store,
             cand_out=cand_out,
             cand_idx_out=cand_idx_out,
             cand_ctl_out=cand_ctl_out,
@@ -8531,6 +8540,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
         cand_ctl_out: Optional[torch.Tensor] = None,
         cand_cur_out: Optional[torch.Tensor] = None,
         accept_cap: int = 8192,
+        skip_logits_store: bool = False,
     ) -> torch.Tensor:
         B = q.shape[0]
         next_n = q.shape[1]

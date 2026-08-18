@@ -219,6 +219,7 @@ class FP8MQALogitsKernel:
         emit_cand_bucketed: bool = False,
         accept_cap: int = 8192,
         cand_cap: int = 5120,
+        skip_logits_store: bool = False,
     ):
         self.block_kv = block_kv
         self.phys_block_kv = phys_block_kv
@@ -335,6 +336,14 @@ class FP8MQALogitsKernel:
         self.accept_cap = accept_cap
         self.cand_cap = cand_cap
         self.CAND_WIN = 8
+        # skip_logits_store: emission-only mode - the epilogue never writes
+        # the logits row (the candidate list IS the output). Requires the
+        # bucketed list so scores have somewhere to go; the caller owns the
+        # void->rerun-with-store fallback (an overflowed list cannot be
+        # repaired without the row).
+        if skip_logits_store and not emit_cand_bucketed:
+            raise ValueError("skip_logits_store requires emit_cand_bucketed")
+        self.skip_logits_store = bool(skip_logits_store)
 
     def _setup_mma(self, a_dtype, b_dtype, a_major, b_major):
         self.a_dtype = a_dtype
@@ -1686,7 +1695,8 @@ class FP8MQALogitsKernel:
                             stored_t = self.output_dtype(result_t * Float16(scale_val))
                         else:
                             stored_t = self.output_dtype(result_t * scale_val)
-                        mLogits[(out_row, kv_pos)] = stored_t
+                        if cutlass.const_expr(not self.skip_logits_store):
+                            mLogits[(out_row, kv_pos)] = stored_t
                         if cutlass.const_expr(self.emit_block_meta):
                             # Meta reduction on the POST-conversion value so
                             # block_max bounds what GVR reads back bit-exactly.
@@ -2215,7 +2225,8 @@ class FP8MQALogitsKernel:
                             stored_t = self.output_dtype(result_t * Float16(scale_val))
                         else:
                             stored_t = self.output_dtype(result_t * scale_val)
-                        mLogits[(out_row, kv_pos)] = stored_t
+                        if cutlass.const_expr(not self.skip_logits_store):
+                            mLogits[(out_row, kv_pos)] = stored_t
                         if cutlass.const_expr(self.emit_block_meta):
                             # Meta reduction on the POST-conversion value so
                             # block_max bounds what GVR reads back bit-exactly.
