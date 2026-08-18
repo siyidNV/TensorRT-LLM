@@ -7350,6 +7350,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
             use_ext_counts: bool = False,
             emit_xstate: bool = False,
             use_ext_cand: bool = False,
+            cand_single_band: bool = False,
             ext_rungs: bool = False,
             cand_cap: int = 5120,
             accept_cap: Optional[int] = None,
@@ -7360,8 +7361,8 @@ if IS_CUTLASS_DSL_AVAILABLE:
                    num_threads_per_block, enable_warp_parallel_reduce,
                    compress_ratio, return_output_values, cluster_size,
                    seqlen_sorted, enable_block_skip, use_ext_counts,
-                   emit_xstate, use_ext_cand, ext_rungs, cand_cap, accept_cap,
-                   kc_override)
+                   emit_xstate, use_ext_cand, cand_single_band, ext_rungs,
+                   cand_cap, accept_cap, kc_override)
             if key in cls.kernel_cache:
                 return key
             n_rows = cute.sym_int()
@@ -7441,6 +7442,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
                 use_ext_counts=use_ext_counts,
                 emit_xstate=emit_xstate,
                 use_ext_cand=use_ext_cand,
+                cand_single_band=cand_single_band,
                 ext_rungs=ext_rungs,
                 cand_cap=cand_cap,
                 accept_cap=accept_cap,
@@ -7583,6 +7585,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
             block_max: Optional[torch.Tensor] = None,
             num_threads: Optional[int] = None,
             accept_cap: Optional[int] = None,
+            cand_single_band: bool = False,
             kc_override: Optional[int] = None,
         ) -> None:
             """Three paths, picked by ``(counters, order_row)``:
@@ -7606,9 +7609,10 @@ if IS_CUTLASS_DSL_AVAILABLE:
             # Host-only guard — no device sync. The op signature and output
             # contract are unchanged (unordered int32 indices, -1 pad only
             # for degenerate rows).
-            if _is_tiered_topk_supported(logits, pre_idx, seq_lens,
-                                         output_indices, top_k, next_n,
-                                         compress_ratio, order_row, counters):
+            if (seed_thr is None and cand_vals is None and xstate is None
+                    and block_max is None and _is_tiered_topk_supported(
+                        logits, pre_idx, seq_lens, output_indices, top_k,
+                        next_n, compress_ratio, order_row, counters)):
                 _tiered_topk(logits, pre_idx, seq_lens, output_indices, top_k,
                              next_n, compress_ratio)
                 return
@@ -7755,6 +7759,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
                 use_ext_counts=use_ext_counts,
                 emit_xstate=emit_xstate,
                 use_ext_cand=use_ext_cand,
+                cand_single_band=cand_single_band,
                 ext_rungs=ext_rungs,
                 cand_cap=(cand_vals.shape[1] if use_ext_cand else 5120),
                 accept_cap=accept_cap,
@@ -7798,6 +7803,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
         block_max: Optional[torch.Tensor] = None,
         num_threads: Optional[int] = None,
         accept_cap: Optional[int] = None,
+        cand_single_band: bool = False,
         kc_override: Optional[int] = None,
     ) -> None:
         """CuTe DSL GVR (Guess-Verify-Refine) Top-K decode for Blackwell.
@@ -7887,6 +7893,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
             block_max=block_max,
             num_threads=num_threads,
             accept_cap=accept_cap,
+            cand_single_band=cand_single_band,
             kc_override=kc_override,
         )
 
@@ -7912,6 +7919,7 @@ if IS_CUTLASS_DSL_AVAILABLE:
         block_max: Optional[torch.Tensor] = None,
         num_threads: Optional[int] = None,
         accept_cap: Optional[int] = None,
+        cand_single_band: bool = False,
         kc_override: Optional[int] = None,
     ) -> None:
         return None

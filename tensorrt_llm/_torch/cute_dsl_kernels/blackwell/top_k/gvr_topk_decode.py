@@ -327,6 +327,7 @@ class GvrTopKKernel:
         use_ext_counts: bool = False,
         ext_rungs: bool = False,
         use_ext_cand: bool = False,
+        cand_single_band: bool = False,
         cand_cap: int = 5120,
         cand_rung: int = 0,
         emit_xstate: bool = False,
@@ -633,6 +634,13 @@ class GvrTopKKernel:
         # <= cand_cap and the collect rung's exact count is in [K, kC];
         # ineligible rows fall through to the ext-counts path.
         self.use_ext_cand = bool(use_ext_cand)
+        # cand_single_band: the emitter collected EVERY >= t0 hit into
+        # segment C only (claim-window; A/B untouched). Segment-prefix
+        # mapped copies are invalid (entries are unordered in C), so the
+        # cut always takes the value-FILTERED walk over the C range at
+        # the tightest line whose exact count fits [K, kC]; line counts
+        # n1/n2 stay exact (independent counting machinery).
+        self.cand_single_band = bool(cand_single_band) and bool(use_ext_cand)
         if kc_override is not None:
             # physical candidate-buffer capacity override (B* search)
             self.kC = int(kc_override)
@@ -6616,6 +6624,12 @@ class GvrTopKKernel:
                 lenB = n1_c - n2_c + spillA
                 if lenB > cutlass.Int32(segA):
                     lenB = cutlass.Int32(segA)
+                if cutlass.const_expr(self.cand_single_band):
+                    # everything lives in C; the shared src mapping
+                    # (j >= lenA + lenB -> 2*segA + ...) then routes every
+                    # ordinal into the C range
+                    lenA = cutlass.Int32(0)
+                    lenB = cutlass.Int32(0)
                 lenC = claimed_c - lenA - lenB
                 total_l = claimed_c
                 usable = cutlass.Int32(0)
@@ -6637,7 +6651,38 @@ class GvrTopKKernel:
                 if cutlass.const_expr(True):
                     vbase = cand_vals_row.iterator.toint()
                     ibase = cand_idx_row.iterator.toint()
-                if usable == cutlass.Int32(1):
+                usable_sb = usable
+                if cutlass.const_expr(not self.cand_single_band):
+                    usable_sb = cutlass.Int32(0)
+                if cutlass.const_expr(True):
+                    if usable_sb == cutlass.Int32(1):
+                        # tightest line whose exact count fits [K, B*];
+                        # the cut is applied by the FILTERED walk below
+                        # (line_cut stays 0), so no prefix-completeness
+                        # requirement - coverage extends to any
+                        # claimed <= list_cap.
+                        if n2_c >= kK_l and n2_c <= bs_l:
+                            cut_t = seed_thr_row[2]
+                            cut_n = n2_c
+                            anch_t = seed_thr_row[2]
+                            have = cutlass.Int32(1)
+                        if have == cutlass.Int32(0) and n1_c >= kK_l and n1_c <= bs_l:
+                            cut_t = seed_thr_row[1]
+                            cut_n = n1_c
+                            anch_t = seed_thr_row[1]
+                            have = cutlass.Int32(1)
+                        if have == cutlass.Int32(0) and claimed_c <= bs_l:
+                            # claimed includes window pads; the filter at
+                            # t0 drops them (sentinel score = -inf)
+                            cut_t = seed_thr_row[0]
+                            cut_n = claimed_c
+                            anch_t = seed_thr_row[0]
+                            have = cutlass.Int32(1)
+                usable_nb = usable
+                if cutlass.const_expr(self.cand_single_band):
+                    # 3-band prefix cuts are invalid on single-band lists
+                    usable_nb = cutlass.Int32(0)
+                if usable_nb == cutlass.Int32(1):
                     # cut = tightest line in [K, B*]; anchor = loosest.
                     if n2_c >= kK_l and n2_c <= bs_l:
                         cut_t = seed_thr_row[2]
