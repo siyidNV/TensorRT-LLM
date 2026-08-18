@@ -220,6 +220,7 @@ class FP8MQALogitsKernel:
         accept_cap: int = 8192,
         cand_cap: int = 5120,
         skip_logits_store: bool = False,
+        cand_single_band: bool = False,
     ):
         self.block_kv = block_kv
         self.phys_block_kv = phys_block_kv
@@ -344,6 +345,15 @@ class FP8MQALogitsKernel:
         if skip_logits_store and not emit_cand_bucketed:
             raise ValueError("skip_logits_store requires emit_cand_bucketed")
         self.skip_logits_store = bool(skip_logits_store)
+        # cand_single_band: collect every >= t0 hit into segment C only
+        # (claim-window, no per-warp exact atomics). Skips the A/B exact
+        # ballot claims entirely - measured 2048-density emission tax
+        # drops from +20% to +3%. n1/n2 line counts stay exact (the
+        # count machinery is independent); the consumer's line cut must
+        # then use the t0 cut (full list) or filter at load.
+        if cand_single_band and not emit_cand_bucketed:
+            raise ValueError("cand_single_band requires emit_cand_bucketed")
+        self.cand_single_band = bool(cand_single_band)
 
     def _setup_mma(self, a_dtype, b_dtype, a_major, b_major):
         self.a_dtype = a_dtype
@@ -1762,17 +1772,24 @@ class FP8MQALogitsKernel:
                                     pA_k = cutlass.Int32(0)
                                     pB_k = cutlass.Int32(0)
                                     pC_k = cutlass.Int32(0)
-                                    if meta_valid:
-                                        if f32_t >= sthr[t * 3 + 2]:
-                                            pA_k = cutlass.Int32(1)
-                                        if f32_t >= sthr[t * 3 + 1] and pA_k == cutlass.Int32(0):
-                                            pB_k = cutlass.Int32(1)
-                                        if (
-                                            f32_t >= sthr[t * 3 + 0]
-                                            and pA_k == cutlass.Int32(0)
-                                            and pB_k == cutlass.Int32(0)
-                                        ):
-                                            pC_k = cutlass.Int32(1)
+                                    if cutlass.const_expr(self.cand_single_band):
+                                        if meta_valid:
+                                            if f32_t >= sthr[t * 3 + 0]:
+                                                pC_k = cutlass.Int32(1)
+                                    else:
+                                        if meta_valid:
+                                            if f32_t >= sthr[t * 3 + 2]:
+                                                pA_k = cutlass.Int32(1)
+                                            if f32_t >= sthr[t * 3 + 1] and pA_k == cutlass.Int32(
+                                                0
+                                            ):
+                                                pB_k = cutlass.Int32(1)
+                                            if (
+                                                f32_t >= sthr[t * 3 + 0]
+                                                and pA_k == cutlass.Int32(0)
+                                                and pB_k == cutlass.Int32(0)
+                                            ):
+                                                pC_k = cutlass.Int32(1)
                                     # ---- A: exact claim ----
                                     mA_k = cute.arch.vote_ballot_sync(pA_k != cutlass.Int32(0))
                                     cntA_k = cutlass.Int32(cute.arch.popc(mA_k))
@@ -2292,17 +2309,24 @@ class FP8MQALogitsKernel:
                                     pA_k = cutlass.Int32(0)
                                     pB_k = cutlass.Int32(0)
                                     pC_k = cutlass.Int32(0)
-                                    if meta_valid:
-                                        if f32_t >= sthr[t * 3 + 2]:
-                                            pA_k = cutlass.Int32(1)
-                                        if f32_t >= sthr[t * 3 + 1] and pA_k == cutlass.Int32(0):
-                                            pB_k = cutlass.Int32(1)
-                                        if (
-                                            f32_t >= sthr[t * 3 + 0]
-                                            and pA_k == cutlass.Int32(0)
-                                            and pB_k == cutlass.Int32(0)
-                                        ):
-                                            pC_k = cutlass.Int32(1)
+                                    if cutlass.const_expr(self.cand_single_band):
+                                        if meta_valid:
+                                            if f32_t >= sthr[t * 3 + 0]:
+                                                pC_k = cutlass.Int32(1)
+                                    else:
+                                        if meta_valid:
+                                            if f32_t >= sthr[t * 3 + 2]:
+                                                pA_k = cutlass.Int32(1)
+                                            if f32_t >= sthr[t * 3 + 1] and pA_k == cutlass.Int32(
+                                                0
+                                            ):
+                                                pB_k = cutlass.Int32(1)
+                                            if (
+                                                f32_t >= sthr[t * 3 + 0]
+                                                and pA_k == cutlass.Int32(0)
+                                                and pB_k == cutlass.Int32(0)
+                                            ):
+                                                pC_k = cutlass.Int32(1)
                                     # ---- A: exact claim ----
                                     mA_k = cute.arch.vote_ballot_sync(pA_k != cutlass.Int32(0))
                                     cntA_k = cutlass.Int32(cute.arch.popc(mA_k))
