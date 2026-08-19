@@ -3922,6 +3922,7 @@ def test_indexer_decode_gvr_prescore_chained(monkeypatch):
             indexer_head_dim=head_dim,
             use_cute_dsl_paged_mqa_logits=True,
         )
+        m.max_num_sequences = batch_size
         Indexer.prepare(m)
         return m
 
@@ -3950,12 +3951,23 @@ def test_indexer_decode_gvr_prescore_chained(monkeypatch):
         else:
             assert bool(torch.isinf(st.seed_row[:batch_size, 0]).all())
 
-        meta_fb = make_meta(cur_lens)
-        indexer._update_k_cache(k_fp8, k_scale, meta_fb)
-        out_fb = indexer.sparse_attn_indexer(
-            meta_fb, hidden_states, q_fp8, k_fp8, k_scale, w, use_custom_topk=False
-        )[:batch_size]
-
-        _, total_similarity, _ = validate_topk_indices(out_custom, out_fb, batch_size)
-        avg = total_similarity / batch_size
-        assert avg >= 0.95, f"step {step}: custom vs fallback similarity {avg:.4f} < 0.95"
+        # reference: the same scoring op directly (identical logits), then
+        # exact top-k value-set comparison - tie-proof and stronger than
+        # index-set similarity
+        n_pad = meta.get_indexer_max_seq_len()
+        logits_ref = torch.ops.trtllm.cute_dsl_fp8_paged_mqa_logits(
+            q_fp8.view(batch_size, 1, heads, head_dim),
+            meta.kv_cache_manager.get_indexer_k_cache_buffers(layer_idx),
+            w,
+            meta.gen_indexer_kv_lens_cuda_runtime,
+            meta.indexer_k_cache_block_offsets[:batch_size],
+            meta.scheduler_metadata_buffer,
+            n_pad,
+        ).float()
+        for b in range(batch_size):
+            row = logits_ref[b, : cur_lens[b].item()]
+            ref_vals = torch.topk(row, index_topk).values.sort(descending=True).values
+            sel_vals = row[out_custom[b].long()].sort(descending=True).values
+            assert torch.equal(sel_vals, ref_vals), (
+                f"step {step} row {b}: custom top-k NOT exact vs reference"
+            )
