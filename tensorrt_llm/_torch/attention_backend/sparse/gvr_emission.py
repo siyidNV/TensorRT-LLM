@@ -70,6 +70,67 @@ GUARD_HI = 0.5
 # three lines increasing and the loosest one finite.
 LIST_PARK_LINE = 1.0e30
 
+# Prescore tier: sample = prev top-k plus both neighbors. The sample must
+# strictly exceed K (turnover between steps otherwise degrades the bound)
+# and must be deduplicated before ranking (duplicates inflate the sample
+# k-th above the true k-th, breaking soundness).
+PRESCORE_NEIGHBORS = 3
+
+_GATHER_ROWS_KERNEL = None
+
+
+def _gather_rows_kernel():
+    """Lazy-compiled Triton gather: token records from the paged indexer
+    K-cache into densely packed mini blocks (same fused record layout, so
+    the scoring op reads them bit-identically)."""
+    global _GATHER_ROWS_KERNEL
+    if _GATHER_ROWS_KERNEL is None:
+        import triton
+        import triton.language as tl
+
+        @triton.jit
+        def _gather_rows(
+            pool,
+            rows,
+            out,
+            n_rows,
+            S: tl.constexpr,
+            TPB: tl.constexpr,
+            WPD: tl.constexpr,
+            WPB: tl.constexpr,
+            ROWS: tl.constexpr,
+        ):
+            # src record r (= phys_block*TPB + offset): data words at
+            # block*WPB + offset*WPD, scale word at block*WPB + TPB*WPD
+            # + offset; dst mini block (b*S//TPB + s//TPB) mirrors the
+            # same intra-block layout.
+            pid = tl.program_id(0)
+            r = pid * ROWS + tl.arange(0, ROWS)
+            m = r < n_rows
+            src = tl.load(rows + r, mask=m, other=0).to(tl.int64)
+            sblk = src // TPB
+            soff = src % TPB
+            b = (r // S).to(tl.int64)
+            s = (r % S).to(tl.int64)
+            dblk = b * (S // TPB) + s // TPB
+            doff = s % TPB
+            j = tl.arange(0, WPD)
+            v = tl.load(
+                pool + (sblk * WPB + soff * WPD)[:, None] + j[None, :],
+                mask=m[:, None],
+                other=0,
+            )
+            tl.store(
+                out + (dblk * WPB + doff * WPD)[:, None] + j[None, :],
+                v,
+                mask=m[:, None],
+            )
+            sv = tl.load(pool + sblk * WPB + TPB * WPD + soff, mask=m, other=0)
+            tl.store(out + dblk * WPB + TPB * WPD + doff, sv, mask=m)
+
+        _GATHER_ROWS_KERNEL = _gather_rows
+    return _GATHER_ROWS_KERNEL
+
 
 class GvrEmissionState:
     """Per-attention-backend emission state (persistent buffers)."""
@@ -107,6 +168,132 @@ class GvrEmissionState:
         # block_max prefix ([rows, nb_pad*4] fp32 warp-partials),
         # allocated lazily once max_seq_len is known
         self.block_max: Optional[torch.Tensor] = None
+        # prescore-tier state (lazy; see ensure_prescore)
+        self.mini_fused: Optional[torch.Tensor] = None
+        self.mini_bt: Optional[torch.Tensor] = None
+        self.mini_meta: Optional[dict] = None
+        self._mini_ctx: Optional[torch.Tensor] = None
+        self._mini_tpb = 0
+
+    def ensure_prescore(self, tokens_per_block: int, record_bytes: int, num_sms: int) -> None:
+        """Lazy prescore buffers: mini K-cache blocks holding the gathered
+        sample records plus the (constant) mini block table / context lens
+        / DeepGEMM schedules. All shapes depend only on engine-static values, so
+        one allocation serves every step; allocation during CUDA graph
+        capture fails loudly (same contract as ensure_block_max)."""
+        if self.mini_fused is not None and self._mini_tpb == tokens_per_block:
+            return
+        if torch.cuda.is_current_stream_capturing():
+            raise RuntimeError(
+                "GvrEmissionState.ensure_prescore: (re)allocation requested "
+                "during CUDA graph capture; run a warmup step first"
+            )
+        from tensorrt_llm.deep_gemm import get_paged_mqa_logits_metadata
+
+        cand_rows = min(self.max_rows, LIST_EMIT_MAX_B)
+        sample = PRESCORE_NEIGHBORS * self.top_k
+        assert sample % tokens_per_block == 0, (
+            f"prescore sample {sample} must be a multiple of tokens_per_block {tokens_per_block}"
+        )
+        mb = sample // tokens_per_block
+        device = self.seed_row.device
+        self.mini_fused = torch.zeros(
+            (cand_rows * mb, tokens_per_block, 1, record_bytes),
+            dtype=torch.uint8,
+            device=device,
+        )
+        self.mini_bt = torch.arange(cand_rows * mb, dtype=torch.int32, device=device).view(
+            cand_rows, mb
+        )
+        self._mini_ctx = torch.full((cand_rows,), sample, dtype=torch.int32, device=device)
+        # schedule metadata depends on the (python-int) batch size; keep
+        # one static buffer per reachable batch so graph capture bakes
+        # the right one
+        self.mini_meta = {
+            b: get_paged_mqa_logits_metadata(
+                self._mini_ctx[:b].unsqueeze(-1), tokens_per_block, num_sms
+            )
+            for b in range(1, cand_rows + 1)
+        }
+        self._mini_tpb = tokens_per_block
+
+    def prescore_lines(
+        self,
+        num_rows: int,
+        q: torch.Tensor,
+        kv_pool: torch.Tensor,
+        weights: torch.Tensor,
+        block_table: torch.Tensor,
+        kv_lens: torch.Tensor,
+        head_dim: int,
+    ) -> None:
+        """Sound seed lines from re-scoring the previous step's top-k.
+
+        Gathers prev_topk plus both neighbors (deduplicated) out of the
+        paged K-cache into the mini blocks, re-scores them with the SAME
+        op on the current query (bit-identical arithmetic), and places
+        t0 at the sample k-th: a mathematically sound lower bound of the
+        true k-th (the sample is a sub-multiset of the row's scores).
+        t1/t2 land at the sample 3K/4- and K/2-th with ascending guards.
+        Rows without K distinct finite samples get non-finite lines (the
+        kernel's validity guard routes them to the stock path). Pure
+        device ops + two kernel launches: graph-capturable.
+        """
+        tpb = self._mini_tpb
+        sample = PRESCORE_NEIGHBORS * self.top_k
+        k = self.top_k
+        lens = kv_lens[:num_rows].long().clamp_min(1)
+        prev = self.prev_topk[:num_rows].long().clamp_min(0)
+        last = (lens - 1).unsqueeze(1)
+        p0 = torch.minimum(prev, last)
+        pos = torch.cat([p0, (p0 - 1).clamp_min(0), torch.minimum(p0 + 1, last)], dim=1)
+        # dedup: duplicates would occupy ranking slots and lift the
+        # sample k-th above the true k-th (unsound)
+        sp, order = pos.sort(dim=1)
+        dup = torch.zeros_like(pos, dtype=torch.bool)
+        dup.scatter_(1, order[:, 1:], sp[:, 1:] == sp[:, :-1])
+        blk = block_table[:num_rows].long().gather(1, pos // tpb)
+        rows = (blk * tpb + pos % tpb).to(torch.int32).reshape(-1).contiguous()
+        wpd = head_dim // 4
+        wpb = self.mini_fused.shape[1] * self.mini_fused.shape[3] // 4
+        n_rows = rows.numel()
+        _gather_rows_kernel()[((n_rows + 31) // 32,)](
+            kv_pool.view(torch.int32).reshape(-1),
+            rows,
+            self.mini_fused.view(torch.int32).reshape(-1),
+            n_rows,
+            S=sample,
+            TPB=tpb,
+            WPD=wpd,
+            WPB=wpb,
+            ROWS=32,
+        )
+        mini = torch.ops.trtllm.cute_dsl_fp8_paged_mqa_logits(
+            q[:num_rows],
+            self.mini_fused,
+            weights[:num_rows],
+            self._mini_ctx[:num_rows],
+            self.mini_bt[:num_rows],
+            self.mini_meta[num_rows],
+            sample,
+        )[:, :sample]
+        top = torch.topk(mini.masked_fill(dup, float("-inf")), k, dim=1).values
+        t0 = top[:, k - 1]
+        t1 = torch.maximum(top[:, 3 * k // 4 - 1], t0 + 1e-4)
+        t2 = torch.maximum(top[:, k // 2 - 1], t1 + 1e-4)
+        valid = torch.isfinite(t0)
+        inf = torch.full_like(t0, float("inf"))
+        s = self.seed_row[:num_rows]
+        s[:, 0] = torch.where(valid, t0, inf)
+        s[:, 1] = torch.where(valid, t1, inf)
+        s[:, 2] = torch.where(valid, t2, inf)
+        s[:, 3:8] = 0.0
+        rungs = self.seed_rungs[:num_rows]
+        rungs.copy_(s[:, 0:3])
+        if self.cand_ctl is not None:
+            nc = min(num_rows, self.cand_ctl.shape[0])
+            self.cand_ctl[:nc].zero_()
+            self.cand_cur[:nc].zero_()
 
     def ensure_block_max(self, max_seq_len: int) -> torch.Tensor:
         nb4 = ((max_seq_len + 255) // 256 * 256) // 128 * 4
@@ -215,7 +402,7 @@ class GvrEmissionState:
             self.cand_ctl[:nc].zero_()
             self.cand_cur[:nc].zero_()
 
-    def indexer_emit_kwargs(self, emit_tier: str, num_rows: int) -> dict:
+    def indexer_emit_kwargs(self, emit_tier: str, num_rows: int, single_band: bool = False) -> dict:
         """kwargs for CuteDSLFP4PagedMQALogitsRunner.forward covering the
         planned emission tier (caller merges into its call)."""
         kw: dict = {}
@@ -229,10 +416,19 @@ class GvrEmissionState:
                 cand_ctl_out=self.cand_ctl[:num_rows],
                 cand_cur_out=self.cand_cur[:num_rows],
             )
+            if single_band:
+                # every admitted entry goes into the C claim window only
+                # (no per-band exact-claim atomics); requires three REAL
+                # ascending lines (prescore), not parked ones
+                kw["cand_single_band"] = True
         return kw
 
     def topk_ext_kwargs(
-        self, route: TopkRoute, num_rows: int, block_max: Optional[torch.Tensor]
+        self,
+        route: TopkRoute,
+        num_rows: int,
+        block_max: Optional[torch.Tensor],
+        single_band: bool = False,
     ) -> dict:
         """kwargs for trtllm::cute_dsl_gvr_topk_decode consuming this
         step's emission per the picked route."""
@@ -258,6 +454,8 @@ class GvrEmissionState:
                 cand_ctl=self.cand_ctl[:num_rows],
                 accept_cap=LIST_SEG_A,
             )
+            if single_band:
+                kw["cand_single_band"] = True
         if route.attach_block_max and block_max is not None:
             kw["block_max"] = block_max
         return kw

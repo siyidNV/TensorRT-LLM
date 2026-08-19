@@ -3823,3 +3823,139 @@ def test_kv_lens_row_reorder_threshold():
     assert md_above.kv_lens_row_reorder is not None
     reorder2 = md_above.kv_lens_row_reorder.cpu().tolist()
     assert [kv_vals2[i] for i in reorder2] == sorted(kv_vals2, reverse=True)
+
+
+@pytest.mark.skipif(not has_deep_gemm(), reason="DeepGEMM not available")
+@skip_pre_blackwell
+def test_indexer_decode_gvr_prescore_chained(monkeypatch):
+    """Chained-decode glue test for the GVR prescore tier.
+
+    TRTLLM_GVR_EMISSION + TRTLLM_GVR_PRESCORE route the decode step through
+    prescore_lines (sound seed lines from re-scoring prev_topk) + single-band
+    candidate emission + the list consumer. Engine-static max_seq_len >= 64K
+    plans the list tier; queries are correlated across steps so warm steps
+    admit through the candidate list, while step 0 (cold prev_topk -> parked
+    lines) exercises the in-kernel stock fallback. Every step is checked
+    against the non-custom fallback arm.
+    """
+    monkeypatch.setenv("TRTLLM_GVR_EMISSION", "1")
+    monkeypatch.setenv("TRTLLM_GVR_PRESCORE", "1")
+    torch.manual_seed(7)
+    random.seed(7)
+
+    heads, head_dim = 32, 128
+    block_size = 64
+    batch_size = 2
+    index_topk = 2048
+    steps = 4
+    kv0 = 65664  # > LIST_EMIT_MIN_N so the (engine-static) plan picks list
+    max_model_len = kv0 + 1024
+    layer_idx = 0
+
+    cache_manager, sparse_attn_config = create_dsa_cache_manager(
+        batch_size=batch_size,
+        head_dim=head_dim,
+        tokens_per_block=block_size,
+        max_seq_len=max_model_len,
+        num_layers=1,
+        index_topk=index_topk,
+    )
+    sparse_attn_config.use_cute_dsl_topk = True
+    sparse_attn_config.use_cute_dsl_paged_mqa_logits = True
+    indexer = create_indexer(sparse_attn_config, layer_idx=layer_idx)
+    if not (indexer.use_cute_dsl_topk and indexer.use_cute_dsl_paged_mqa_logits):
+        pytest.skip("CuTe DSL not available")
+    assert indexer.use_gvr_emission and indexer.use_gvr_prescore
+
+    request_ids = list(range(batch_size))
+    kv_lens = torch.full((batch_size,), kv0, dtype=torch.int32)
+    cache_manager.add_dummy_requests(
+        request_ids=request_ids,
+        token_nums=(kv_lens + steps).tolist(),
+        is_gen=False,
+        prepare_resource=True,
+    )
+
+    total_context_tokens = kv_lens.sum().item()
+    k_context_bf16 = torch.randn(
+        (total_context_tokens, head_dim), device="cuda", dtype=torch.bfloat16
+    )
+    k_context_fp8, k_context_scale = fp8_utils.fp8_quantize_1x128_sf_transpose(k_context_bf16)
+    metadata_context = _create_mock_metadata(
+        request_ids=request_ids,
+        batch_size=batch_size,
+        num_contexts=batch_size,
+        num_generations=0,
+        seq_lens=kv_lens.clone(),
+        kv_lens=kv_lens.clone(),
+        num_cached_tokens=[0] * batch_size,
+        cache_manager=cache_manager,
+        num_ctx_tokens=total_context_tokens,
+        num_tokens=total_context_tokens,
+        index_topk=index_topk,
+        indexer_head_dim=head_dim,
+    )
+    Indexer.prepare(metadata_context)
+    indexer._update_k_cache(k_context_fp8, k_context_scale, metadata_context)
+
+    # correlated per-step queries: high prev->cur top-k overlap so warm
+    # steps have a tight sound bound and admit through the list
+    q_base = torch.randn((batch_size, heads, head_dim), device="cuda", dtype=torch.bfloat16)
+    w_base = torch.randn((batch_size, heads), device="cuda", dtype=torch.float32)
+    hidden_states = torch.randn((batch_size, 4096), device="cuda", dtype=torch.bfloat16)
+    seq_lens = torch.ones((batch_size,), dtype=torch.int32)
+    cur_lens = kv_lens.clone()
+
+    def make_meta(lens):
+        m = _create_mock_metadata(
+            request_ids=request_ids,
+            batch_size=batch_size,
+            num_contexts=0,
+            num_generations=batch_size,
+            seq_lens=seq_lens.clone(),
+            kv_lens=lens.clone(),
+            num_cached_tokens=(lens - 1).tolist(),
+            cache_manager=cache_manager,
+            num_ctx_tokens=0,
+            num_tokens=batch_size,
+            index_topk=index_topk,
+            indexer_head_dim=head_dim,
+            use_cute_dsl_paged_mqa_logits=True,
+        )
+        Indexer.prepare(m)
+        return m
+
+    for step in range(steps):
+        cur_lens += 1
+        torch.manual_seed(100 + step)
+        q_fp8 = (q_base + 0.15 * torch.randn_like(q_base)).to(torch.float8_e4m3fn)
+        w = w_base + 0.15 * torch.randn_like(w_base)
+        k_new_bf16 = torch.randn((batch_size, head_dim), device="cuda", dtype=torch.bfloat16)
+        k_fp8, k_scale = fp8_utils.fp8_quantize_1x128_sf_transpose(k_new_bf16)
+
+        meta = make_meta(cur_lens)
+        indexer._update_k_cache(k_fp8, k_scale, meta)
+        out_custom = indexer.sparse_attn_indexer(
+            meta, hidden_states, q_fp8, k_fp8, k_scale, w, use_custom_topk=True
+        )[:batch_size].clone()
+
+        assert indexer._gvr_route is not None and indexer._gvr_route.tier == "list"
+        assert indexer._gvr_prescore_step
+        st = indexer._gvr_emission
+        if step >= 1:
+            # warm rows carry finite sound lines and the single-band
+            # emitter must have claimed candidates
+            assert torch.isfinite(st.seed_row[:batch_size, 0]).all()
+            assert int(st.cand_ctl[:batch_size, 0].max().item()) > 0
+        else:
+            assert bool(torch.isinf(st.seed_row[:batch_size, 0]).all())
+
+        meta_fb = make_meta(cur_lens)
+        indexer._update_k_cache(k_fp8, k_scale, meta_fb)
+        out_fb = indexer.sparse_attn_indexer(
+            meta_fb, hidden_states, q_fp8, k_fp8, k_scale, w, use_custom_topk=False
+        )[:batch_size]
+
+        _, total_similarity, _ = validate_topk_indices(out_custom, out_fb, batch_size)
+        avg = total_similarity / batch_size
+        assert avg >= 0.95, f"step {step}: custom vs fallback similarity {avg:.4f} < 0.95"

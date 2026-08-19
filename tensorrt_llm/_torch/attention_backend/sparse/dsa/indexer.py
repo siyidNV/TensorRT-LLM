@@ -694,8 +694,16 @@ class Indexer(nn.Module):
             and self.use_cute_dsl_topk
             and self.use_cute_dsl_paged_mqa_logits
         )
+        # Prescore tier (opt-in on top of emission; FP8, compress_ratio==1,
+        # list tier only): seed lines from re-scoring the previous step's
+        # top-k on the current query — a sound lower bound of the true
+        # k-th — with single-band candidate emission (see gvr_emission).
+        self.use_gvr_prescore = (
+            os.environ.get("TRTLLM_GVR_PRESCORE", "0") == "1" and self.use_gvr_emission
+        )
         self._gvr_emission = None  # lazy GvrEmissionState (first decode step)
         self._gvr_route = None
+        self._gvr_prescore_step = False
         self.weight_scale_factor = self.softmax_scale * self.n_heads**-0.5
 
         self._enable_heuristic_topk = (
@@ -1783,10 +1791,34 @@ class Indexer(nn.Module):
                         torch.cuda.get_device_properties(q_decode.device).multi_processor_count,
                         compress_ratio=max(self.compress_ratio, 1),
                     )
-                    if emit_tier in ("counts", "list", "rungs"):
+                    prescore_ok = (
+                        self.use_gvr_prescore
+                        and emit_tier == "list"
+                        and not self.use_fp4
+                        and self.compress_ratio <= 1
+                    )
+                    self._gvr_prescore_step = prescore_ok
+                    if prescore_ok:
+                        st.ensure_prescore(
+                            k_cache.shape[1],
+                            k_cache.shape[-1],
+                            torch.cuda.get_device_properties(q_decode.device).multi_processor_count,
+                        )
+                        st.prescore_lines(
+                            batch_size,
+                            q_decode,
+                            k_cache,
+                            weights_decode,
+                            block_table,
+                            dsl_context_lens,
+                            self.head_dim,
+                        )
+                    elif emit_tier in ("counts", "list", "rungs"):
                         st.update_seed_rows(batch_size, emit_tier)
                     if emit_tier in ("counts", "list"):
-                        gvr_emit_kwargs = st.indexer_emit_kwargs(emit_tier, batch_size)
+                        gvr_emit_kwargs = st.indexer_emit_kwargs(
+                            emit_tier, batch_size, single_band=prescore_ok
+                        )
                     if self._gvr_route.attach_block_max or emit_tier in (
                         "counts",
                         "list",
@@ -1924,6 +1956,7 @@ class Indexer(nn.Module):
                         self._gvr_route,
                         num_gen_tokens,
                         st.block_max[:num_gen_tokens] if st.block_max is not None else None,
+                        single_band=self._gvr_prescore_step,
                     )
                     torch.ops.trtllm.cute_dsl_gvr_topk_decode(
                         logits_decode,
