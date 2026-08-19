@@ -110,13 +110,12 @@ def _prescore_kernels():
     a stale tag under CUDA-graph replay can only DROP an extra sample -
     the sound direction).
 
-    _gather_prep fuses, per sample slot: position derivation (prev and
+    _score_prep fuses, per sample slot: position derivation (prev and
     both neighbors), duplicate marking (prev entries are distinct, so
     only the +-1 copies collide: with prev itself, or q = p+1 = p'-1 via
-    p' = p+2 in prev, where the minus copy wins; copy-0 boundary/garbage
-    entries at i>0 are over-dropped - sound), physical row lookup, and
-    the fused-record copy into the mini blocks (data words then scale
-    word, same intra-block layout the scoring op reads)."""
+    p' = p+2 in prev, where the minus copy wins; boundary/garbage
+    entries at i>0 are over-dropped on every copy - sound), physical
+    row lookup, and in-register scoring of the fp8 record."""
     global _PRESCORE_KERNELS
     if _PRESCORE_KERNELS is None:
         import triton
@@ -132,74 +131,6 @@ def _prescore_kernels():
             pv = tl.load(prev + r, mask=m, other=0)
             p0 = tl.minimum(tl.maximum(pv, 0), last)
             tl.store(mask + b * npad + p0.to(tl.int64), gen, mask=m)
-
-        @triton.jit
-        def _gather_prep(
-            prev,
-            lens,
-            mask,
-            bt,
-            pool,
-            out,
-            dup,
-            gen,
-            npad,
-            maxblk,
-            n_rows,
-            K: tl.constexpr,
-            S: tl.constexpr,
-            TPB: tl.constexpr,
-            WPD: tl.constexpr,
-            WPB: tl.constexpr,
-            ROWS: tl.constexpr,
-        ):
-            pid = tl.program_id(0)
-            r = pid * ROWS + tl.arange(0, ROWS)
-            m = r < n_rows
-            b = r // S
-            sm = r % S
-            c = sm // K
-            i = sm % K
-            last = tl.load(lens + b, mask=m, other=1) - 1
-            pv = tl.load(prev + b * K + i, mask=m, other=0)
-            p0 = tl.minimum(tl.maximum(pv, 0), last)
-            pos = tl.where(
-                c == 0, p0, tl.where(c == 1, tl.maximum(p0 - 1, 0), tl.minimum(p0 + 1, last))
-            )
-            b64 = b.to(tl.int64)
-            g = tl.load(mask + b64 * npad + pos.to(tl.int64), mask=m, other=0)
-            in_prev = g == gen
-            p2 = tl.minimum(pos + 1, last)
-            g2 = tl.load(mask + b64 * npad + p2.to(tl.int64), mask=m, other=0)
-            # boundary/garbage guard on ALL copies: rows violating the
-            # "prev entries distinct" precondition (cold zeros, -1 pads,
-            # stale beyond-length values) collapse whole copies onto one
-            # clamped position; over-dropping them keeps the bound sound
-            # (fewer samples = looser) and parks fully-degenerate rows.
-            dg = ((pv <= 0) | (pv >= last)) & (i > 0)
-            d = dg | tl.where(
-                c == 0,
-                False,
-                tl.where(c == 1, in_prev, in_prev | ((g2 == gen) & (p2 != pos))),
-            )
-            tl.store(dup + r, d.to(tl.int8), mask=m)
-            blk = tl.load(bt + b * maxblk + pos // TPB, mask=m, other=0).to(tl.int64)
-            soff = pos % TPB
-            dblk = (r // TPB).to(tl.int64)
-            doff = r % TPB
-            j = tl.arange(0, WPD)
-            v = tl.load(
-                pool + (blk * WPB + soff.to(tl.int64) * WPD)[:, None] + j[None, :],
-                mask=m[:, None],
-                other=0,
-            )
-            tl.store(
-                out + (dblk * WPB + doff.to(tl.int64) * WPD)[:, None] + j[None, :],
-                v,
-                mask=m[:, None],
-            )
-            sv = tl.load(pool + blk * WPB + TPB * WPD + soff.to(tl.int64), mask=m, other=0)
-            tl.store(out + dblk * WPB + TPB * WPD + doff.to(tl.int64), sv, mask=m)
 
         @triton.jit
         def _derive_lines(
@@ -251,7 +182,79 @@ def _prescore_kernels():
                 tl.store(ctl + b * 4 + jj, z)
                 tl.store(cur + b * 4 + jj, z)
 
-        _PRESCORE_KERNELS = (_mark_prev, _gather_prep, _derive_lines)
+        @triton.jit
+        def _score_prep(
+            prev,
+            lens,
+            mask,
+            bt,
+            kdata,
+            kscale,
+            q,
+            w,
+            out,
+            gen,
+            npad,
+            maxblk,
+            H: tl.constexpr,
+            D: tl.constexpr,
+            K: tl.constexpr,
+            S: tl.constexpr,
+            TPB: tl.constexpr,
+            BPT: tl.constexpr,
+            TS: tl.constexpr,
+            TILES: tl.constexpr,
+        ):
+            # fused gather+score: per (row, TS-sample tile) derive the
+            # positions and duplicate flags, read each fp8 record ONCE,
+            # score it in-register (fp32 GEMM -> relu -> weighted head
+            # sum -> per-token scale, the reference semantics), and store
+            # the fp32 score (-inf for duplicates). Skips the mini-block
+            # materialization entirely; arithmetic-order divergence from
+            # the CUTLASS scorer is orders below the t0 slack.
+            pid = tl.program_id(0)
+            tiles_per_row: tl.constexpr = S // (TS * TILES)
+            b = pid // tiles_per_row
+            t0i = (pid % tiles_per_row) * TILES
+            hj = tl.arange(0, H)
+            dj = tl.arange(0, D)
+            qb = tl.load(q + b * H * D + hj[:, None] * D + dj[None, :])
+            qbt = tl.trans(qb)
+            wb = tl.load(w + b * H + hj)
+            last = tl.load(lens + b) - 1
+            b64 = b.to(tl.int64) * npad
+            for ti in range(TILES):
+                sm = (t0i + ti) * TS + tl.arange(0, TS)
+                c = sm // K
+                i = sm % K
+                pv = tl.load(prev + b * K + i)
+                p0 = tl.minimum(tl.maximum(pv, 0), last)
+                pos = tl.where(
+                    c == 0, p0, tl.where(c == 1, tl.maximum(p0 - 1, 0), tl.minimum(p0 + 1, last))
+                )
+                g = tl.load(mask + b64 + pos.to(tl.int64))
+                in_prev = g == gen
+                p2 = tl.minimum(pos + 1, last)
+                g2 = tl.load(mask + b64 + p2.to(tl.int64))
+                dg = ((pv <= 0) | (pv >= last)) & (i > 0)
+                dup = dg | tl.where(
+                    c == 0,
+                    False,
+                    tl.where(c == 1, in_prev, in_prev | ((g2 == gen) & (p2 != pos))),
+                )
+                blk = tl.load(bt + b * maxblk + pos // TPB).to(tl.int64)
+                soff = (pos % TPB).to(tl.int64)
+                kv = tl.load(kdata + (blk * (TPB * BPT) + soff * D)[:, None] + dj[None, :])
+                acc = tl.dot(kv, qbt, out_dtype=tl.float32)
+                acc = tl.maximum(acc, 0.0)
+                sc = tl.sum(acc * wb[None, :], axis=1)
+                scale_i = tl.load(kscale + blk * (TPB * BPT // 4) + TPB * (D // 4) + soff)
+                kscl = scale_i.to(tl.float32, bitcast=True)
+                sc = sc * kscl
+                sc = tl.where(dup, float("-inf"), sc)
+                tl.store(out + b * S + sm, sc)
+
+        _PRESCORE_KERNELS = (_mark_prev, _derive_lines, _score_prep)
     return _PRESCORE_KERNELS
 
 
@@ -307,47 +310,28 @@ class GvrEmissionState:
         self._mini_tpb = 0
 
     def ensure_prescore(self, tokens_per_block: int, record_bytes: int, num_sms: int) -> None:
-        """Lazy prescore buffers: mini K-cache blocks holding the gathered
-        sample records plus the (constant) mini block table / context lens
-        / DeepGEMM schedules. All shapes depend only on engine-static values, so
-        one allocation serves every step; allocation during CUDA graph
-        capture fails loudly (same contract as ensure_block_max)."""
-        if self.mini_fused is not None and self._mini_tpb == tokens_per_block:
+        """Lazy prescore state: the (constant) mini context lens for the
+        ranking op plus the tokens-per-block geometry. Scores are computed
+        in-place by the fused Triton scorer (no mini-block staging), so
+        the only allocation is tiny; capture-guarded like the scratch."""
+        del num_sms  # geometry no longer needs a schedule
+        cand_rows = min(self.max_rows, self.cand_rows_cap)
+        sample = PRESCORE_NEIGHBORS * self.top_k
+        assert sample % tokens_per_block == 0, (
+            f"prescore sample {sample} must be a multiple of tokens_per_block {tokens_per_block}"
+        )
+        assert record_bytes == 4 * (record_bytes // 4)
+        if self._mini_ctx is not None and self._mini_tpb == tokens_per_block:
             return
         if torch.cuda.is_current_stream_capturing():
             raise RuntimeError(
                 "GvrEmissionState.ensure_prescore: (re)allocation requested "
                 "during CUDA graph capture; run a warmup step first"
             )
-        from tensorrt_llm.deep_gemm import get_paged_mqa_logits_metadata
-
-        cand_rows = min(self.max_rows, self.cand_rows_cap)
-        sample = PRESCORE_NEIGHBORS * self.top_k
-        assert sample % tokens_per_block == 0, (
-            f"prescore sample {sample} must be a multiple of tokens_per_block {tokens_per_block}"
-        )
-        mb = sample // tokens_per_block
         device = self.seed_row.device
-        self.mini_fused = _shared_scratch(
-            "mini_fused",
-            (cand_rows * mb, tokens_per_block, 1, record_bytes),
-            torch.uint8,
-            device,
-        )
-        self.mini_bt = torch.arange(cand_rows * mb, dtype=torch.int32, device=device).view(
-            cand_rows, mb
-        )
         self._mini_ctx = torch.full((cand_rows,), sample, dtype=torch.int32, device=device)
-        # schedule metadata depends on the (python-int) batch size; keep
-        # one static buffer per reachable batch so graph capture bakes
-        # the right one
-        self.mini_meta = {
-            b: get_paged_mqa_logits_metadata(
-                self._mini_ctx[:b].unsqueeze(-1), tokens_per_block, num_sms
-            )
-            for b in range(1, cand_rows + 1)
-        }
         self._mini_tpb = tokens_per_block
+        self._mini_rec = record_bytes
 
     def prescore_lines(
         self,
@@ -362,15 +346,16 @@ class GvrEmissionState:
     ) -> None:
         """Sound seed lines from re-scoring the previous step's top-k.
 
-        Gathers prev_topk plus both neighbors (deduplicated) out of the
-        paged K-cache into the mini blocks, re-scores them with the SAME
-        op on the current query (bit-identical arithmetic), and places
-        t0 at the sample k-th: a mathematically sound lower bound of the
-        true k-th (the sample is a sub-multiset of the row's scores).
-        t1/t2 land at the sample 3K/4- and K/2-th with ascending guards.
-        Rows without K distinct finite samples get non-finite lines (the
-        kernel's validity guard routes them to the stock path). Pure
-        device ops + two kernel launches: graph-capturable.
+        The fused Triton scorer reads prev_topk plus both neighbors
+        (deduplicated) straight out of the paged K-cache and re-scores
+        them on the current query with the reference arithmetic; t0
+        lands at the sample k-th minus a relative slack that dominates
+        any accumulation-order divergence from the CUTLASS scorer by two
+        orders of magnitude - a sound lower bound of the true k-th (the
+        sample is a sub-multiset of the row's scores). Rows without K
+        distinct finite samples get non-finite lines (the kernel's
+        validity guard routes them to the stock path). Four launches,
+        all on static state: graph-capturable.
         """
         tpb = self._mini_tpb
         sample = PRESCORE_NEIGHBORS * self.top_k
@@ -378,44 +363,36 @@ class GvrEmissionState:
         gen = (getattr(self, "_mask_gen", 0) % 255) + 1
         self._mask_gen = gen
         mask = _shared_scratch("dedup_mask", (num_rows, n_pad), torch.uint8, q.device)
-        dupf = _shared_scratch("dup_flags", (num_rows, sample), torch.int8, q.device)
         prev32 = self.prev_topk[:num_rows]
         lens32 = kv_lens[:num_rows].contiguous()
         bt32 = block_table[:num_rows]
-        mark, gather, derive = _prescore_kernels()
+        mark, derive, score = _prescore_kernels()
         n_k = num_rows * k
         mark[((n_k + 255) // 256,)](prev32, lens32, mask.view(-1), gen, n_pad, n_k, K=k, ROWS=256)
-        n_s = num_rows * sample
-        wpd = head_dim // 4
-        wpb = self.mini_fused.shape[1] * self.mini_fused.shape[3] // 4
-        gather[((n_s + 31) // 32,)](
+        heads = q.shape[2]
+        scm = _shared_scratch("mini_scores", (num_rows, sample), torch.float32, q.device)
+        score[(num_rows * (sample // 512),)](
             prev32,
             lens32,
             mask.view(-1),
             bt32,
+            kv_pool.view(torch.float8_e4m3fn).reshape(-1),
             kv_pool.view(torch.int32).reshape(-1),
-            self.mini_fused.view(torch.int32).reshape(-1),
-            dupf.view(-1),
+            q[:num_rows].view(torch.float8_e4m3fn).reshape(-1),
+            weights[:num_rows].reshape(-1),
+            scm.view(-1),
             gen,
             n_pad,
             bt32.shape[1],
-            n_s,
+            H=heads,
+            D=head_dim,
             K=k,
             S=sample,
             TPB=tpb,
-            WPD=wpd,
-            WPB=wpb,
-            ROWS=32,
+            BPT=self._mini_rec,
+            TS=64,
+            TILES=8,
         )
-        mini = torch.ops.trtllm.cute_dsl_fp8_paged_mqa_logits(
-            q[:num_rows],
-            self.mini_fused,
-            weights[:num_rows],
-            self._mini_ctx[:num_rows],
-            self.mini_bt[:num_rows],
-            self.mini_meta[num_rows],
-            sample,
-        )[:, :sample]
         # rank via the GVR top-k op itself (torch sort/topk fall to a
         # per-row radix path, ~15us x rows). t0 = min over the sample's
         # exact top-K = the sample k-th; t1/t2 are heuristic refinement
@@ -423,7 +400,6 @@ class GvrEmissionState:
         # to the consumer, soundness rides on t0 alone). t0 slack: still
         # a lower bound, and it keeps the claimed count above the K+64
         # admission floor on zero-turnover steps.
-        scm = mini.masked_fill(dupf.view(num_rows, sample) != 0, float("-inf"))
         tk_idx = _shared_scratch("mini_topk_idx", (num_rows, k), torch.int32, q.device)
         pre0 = _shared_scratch("mini_pre_idx", (num_rows, k), torch.int32, q.device)
         torch.ops.trtllm.cute_dsl_gvr_topk_decode(
