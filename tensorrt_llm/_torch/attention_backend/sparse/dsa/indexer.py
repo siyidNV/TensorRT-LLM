@@ -1816,6 +1816,7 @@ class Indexer(nn.Module):
                             block_table,
                             dsl_context_lens,
                             self.head_dim,
+                            indexer_max_seq_len,
                         )
                     elif emit_tier in ("counts", "list", "rungs"):
                         st.update_seed_rows(batch_size, emit_tier)

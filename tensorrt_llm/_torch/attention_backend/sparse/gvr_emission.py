@@ -35,6 +35,7 @@ import torch
 from ...cute_dsl_kernels.blackwell.top_k.gvr_routing import (
     LIST_EMIT_MAX_B,
     LIST_EMIT_MIN_N,
+    PRESCORE_LIST_MAX_B,
     TopkRoute,
     pick_config,
     plan_emission,
@@ -46,7 +47,7 @@ LIST_SEG_A = 8192
 LIST_CAP_C = 24576
 LIST_WIDTH = 2 * LIST_SEG_A + LIST_CAP_C
 
-__all__ = ["GvrEmissionState", "LIST_EMIT_MIN_N", "LIST_PARK_LINE"]
+__all__ = ["GvrEmissionState", "LIST_EMIT_MIN_N", "LIST_PARK_LINE", "PRESCORE_LIST_MAX_B"]
 
 # Closed-loop line placement: fit the slope of log2(count) vs threshold
 # from the previous step's (lines, counts) and place the new lines at
@@ -98,60 +99,160 @@ def _shared_scratch(kind: str, shape: tuple, dtype: torch.dtype, device: torch.d
     return t[:need].view(shape)
 
 
-_GATHER_ROWS_KERNEL = None
+_PRESCORE_KERNELS = None
 
 
-def _gather_rows_kernel():
-    """Lazy-compiled Triton gather: token records from the paged indexer
-    K-cache into densely packed mini blocks (same fused record layout, so
-    the scoring op reads them bit-identically)."""
-    global _GATHER_ROWS_KERNEL
-    if _GATHER_ROWS_KERNEL is None:
+def _prescore_kernels():
+    """Lazy-compiled Triton pair for the prescore prepass.
+
+    _mark_prev stamps the current generation byte at each prev position
+    (generation tags make the bitmap self-resetting: no clear pass, and
+    a stale tag under CUDA-graph replay can only DROP an extra sample -
+    the sound direction).
+
+    _gather_prep fuses, per sample slot: position derivation (prev and
+    both neighbors), duplicate marking (prev entries are distinct, so
+    only the +-1 copies collide: with prev itself, or q = p+1 = p'-1 via
+    p' = p+2 in prev, where the minus copy wins; copy-0 boundary/garbage
+    entries at i>0 are over-dropped - sound), physical row lookup, and
+    the fused-record copy into the mini blocks (data words then scale
+    word, same intra-block layout the scoring op reads)."""
+    global _PRESCORE_KERNELS
+    if _PRESCORE_KERNELS is None:
         import triton
         import triton.language as tl
 
         @triton.jit
-        def _gather_rows(
+        def _mark_prev(prev, lens, mask, gen, npad, n_rows, K: tl.constexpr, ROWS: tl.constexpr):
+            pid = tl.program_id(0)
+            r = pid * ROWS + tl.arange(0, ROWS)
+            m = r < n_rows
+            b = (r // K).to(tl.int64)
+            last = tl.load(lens + r // K, mask=m, other=1) - 1
+            pv = tl.load(prev + r, mask=m, other=0)
+            p0 = tl.minimum(tl.maximum(pv, 0), last)
+            tl.store(mask + b * npad + p0.to(tl.int64), gen, mask=m)
+
+        @triton.jit
+        def _gather_prep(
+            prev,
+            lens,
+            mask,
+            bt,
             pool,
-            rows,
             out,
+            dup,
+            gen,
+            npad,
+            maxblk,
             n_rows,
+            K: tl.constexpr,
             S: tl.constexpr,
             TPB: tl.constexpr,
             WPD: tl.constexpr,
             WPB: tl.constexpr,
             ROWS: tl.constexpr,
         ):
-            # src record r (= phys_block*TPB + offset): data words at
-            # block*WPB + offset*WPD, scale word at block*WPB + TPB*WPD
-            # + offset; dst mini block (b*S//TPB + s//TPB) mirrors the
-            # same intra-block layout.
             pid = tl.program_id(0)
             r = pid * ROWS + tl.arange(0, ROWS)
             m = r < n_rows
-            src = tl.load(rows + r, mask=m, other=0).to(tl.int64)
-            sblk = src // TPB
-            soff = src % TPB
-            b = (r // S).to(tl.int64)
-            s = (r % S).to(tl.int64)
-            dblk = b * (S // TPB) + s // TPB
-            doff = s % TPB
+            b = r // S
+            sm = r % S
+            c = sm // K
+            i = sm % K
+            last = tl.load(lens + b, mask=m, other=1) - 1
+            pv = tl.load(prev + b * K + i, mask=m, other=0)
+            p0 = tl.minimum(tl.maximum(pv, 0), last)
+            pos = tl.where(
+                c == 0, p0, tl.where(c == 1, tl.maximum(p0 - 1, 0), tl.minimum(p0 + 1, last))
+            )
+            b64 = b.to(tl.int64)
+            g = tl.load(mask + b64 * npad + pos.to(tl.int64), mask=m, other=0)
+            in_prev = g == gen
+            p2 = tl.minimum(pos + 1, last)
+            g2 = tl.load(mask + b64 * npad + p2.to(tl.int64), mask=m, other=0)
+            # boundary/garbage guard on ALL copies: rows violating the
+            # "prev entries distinct" precondition (cold zeros, -1 pads,
+            # stale beyond-length values) collapse whole copies onto one
+            # clamped position; over-dropping them keeps the bound sound
+            # (fewer samples = looser) and parks fully-degenerate rows.
+            dg = ((pv <= 0) | (pv >= last)) & (i > 0)
+            d = dg | tl.where(
+                c == 0,
+                False,
+                tl.where(c == 1, in_prev, in_prev | ((g2 == gen) & (p2 != pos))),
+            )
+            tl.store(dup + r, d.to(tl.int8), mask=m)
+            blk = tl.load(bt + b * maxblk + pos // TPB, mask=m, other=0).to(tl.int64)
+            soff = pos % TPB
+            dblk = (r // TPB).to(tl.int64)
+            doff = r % TPB
             j = tl.arange(0, WPD)
             v = tl.load(
-                pool + (sblk * WPB + soff * WPD)[:, None] + j[None, :],
+                pool + (blk * WPB + soff.to(tl.int64) * WPD)[:, None] + j[None, :],
                 mask=m[:, None],
                 other=0,
             )
             tl.store(
-                out + (dblk * WPB + doff * WPD)[:, None] + j[None, :],
+                out + (dblk * WPB + doff.to(tl.int64) * WPD)[:, None] + j[None, :],
                 v,
                 mask=m[:, None],
             )
-            sv = tl.load(pool + sblk * WPB + TPB * WPD + soff, mask=m, other=0)
-            tl.store(out + dblk * WPB + TPB * WPD + doff, sv, mask=m)
+            sv = tl.load(pool + blk * WPB + TPB * WPD + soff.to(tl.int64), mask=m, other=0)
+            tl.store(out + dblk * WPB + TPB * WPD + doff.to(tl.int64), sv, mask=m)
 
-        _GATHER_ROWS_KERNEL = _gather_rows
-    return _GATHER_ROWS_KERNEL
+        @triton.jit
+        def _derive_lines(
+            scm,
+            tk_idx,
+            seed,
+            rungs,
+            ctl,
+            cur,
+            K: tl.constexpr,
+            S: tl.constexpr,
+            THREADS: tl.constexpr,
+        ):
+            # one program per row: min/max over the sample's exact top-K
+            # values, slack, line placement, validity, seed/rungs writes
+            # and the per-step ctl/cur zeroing - replaces ~20 host-issued
+            # elementwise kernels
+            b = tl.program_id(0)
+            offs = tl.arange(0, THREADS)
+            mn = tl.full((THREADS,), float("inf"), tl.float32)
+            mx = tl.full((THREADS,), float("-inf"), tl.float32)
+            for j in range(0, K, THREADS):
+                m = j + offs < K
+                idx = tl.load(tk_idx + b * K + j + offs, mask=m, other=0)
+                idx = tl.maximum(idx, 0)
+                v = tl.load(scm + b * S + idx, mask=m, other=float("inf"))
+                mn = tl.minimum(mn, v)
+                v2 = tl.where(m, v, float("-inf"))
+                mx = tl.maximum(mx, v2)
+            t0 = tl.min(mn, axis=0)
+            vmax = tl.max(mx, axis=0)
+            t0 = t0 - (tl.abs(t0) * (1.0 / 4096.0) + 1e-6)
+            spread = tl.maximum(vmax - t0, 4e-4)
+            valid = (t0 > -1.0e37) & (t0 < 1.0e37)
+            inf = float("inf")
+            l0 = tl.where(valid, t0, inf)
+            l1 = tl.where(valid, t0 + 0.25 * spread, inf)
+            l2 = tl.where(valid, t0 + 0.5 * spread, inf)
+            z = tl.program_id(0) * 0
+            tl.store(seed + b * 8 + 0, l0)
+            tl.store(seed + b * 8 + 1, l1)
+            tl.store(seed + b * 8 + 2, l2)
+            for jj in range(3, 8):
+                tl.store(seed + b * 8 + jj, z.to(tl.float32))
+            tl.store(rungs + b * 3 + 0, l0)
+            tl.store(rungs + b * 3 + 1, l1)
+            tl.store(rungs + b * 3 + 2, l2)
+            for jj in range(0, 4):
+                tl.store(ctl + b * 4 + jj, z)
+                tl.store(cur + b * 4 + jj, z)
+
+        _PRESCORE_KERNELS = (_mark_prev, _gather_prep, _derive_lines)
+    return _PRESCORE_KERNELS
 
 
 class GvrEmissionState:
@@ -257,6 +358,7 @@ class GvrEmissionState:
         block_table: torch.Tensor,
         kv_lens: torch.Tensor,
         head_dim: int,
+        n_pad: int,
     ) -> None:
         """Sound seed lines from re-scoring the previous step's top-k.
 
@@ -273,26 +375,32 @@ class GvrEmissionState:
         tpb = self._mini_tpb
         sample = PRESCORE_NEIGHBORS * self.top_k
         k = self.top_k
-        lens = kv_lens[:num_rows].long().clamp_min(1)
-        prev = self.prev_topk[:num_rows].long().clamp_min(0)
-        last = (lens - 1).unsqueeze(1)
-        p0 = torch.minimum(prev, last)
-        pos = torch.cat([p0, (p0 - 1).clamp_min(0), torch.minimum(p0 + 1, last)], dim=1)
-        # dedup: duplicates would occupy ranking slots and lift the
-        # sample k-th above the true k-th (unsound)
-        sp, order = pos.sort(dim=1)
-        dup = torch.zeros_like(pos, dtype=torch.bool)
-        dup.scatter_(1, order[:, 1:], sp[:, 1:] == sp[:, :-1])
-        blk = block_table[:num_rows].long().gather(1, pos // tpb)
-        rows = (blk * tpb + pos % tpb).to(torch.int32).reshape(-1).contiguous()
+        gen = (getattr(self, "_mask_gen", 0) % 255) + 1
+        self._mask_gen = gen
+        mask = _shared_scratch("dedup_mask", (num_rows, n_pad), torch.uint8, q.device)
+        dupf = _shared_scratch("dup_flags", (num_rows, sample), torch.int8, q.device)
+        prev32 = self.prev_topk[:num_rows]
+        lens32 = kv_lens[:num_rows].contiguous()
+        bt32 = block_table[:num_rows]
+        mark, gather, derive = _prescore_kernels()
+        n_k = num_rows * k
+        mark[((n_k + 255) // 256,)](prev32, lens32, mask.view(-1), gen, n_pad, n_k, K=k, ROWS=256)
+        n_s = num_rows * sample
         wpd = head_dim // 4
         wpb = self.mini_fused.shape[1] * self.mini_fused.shape[3] // 4
-        n_rows = rows.numel()
-        _gather_rows_kernel()[((n_rows + 31) // 32,)](
+        gather[((n_s + 31) // 32,)](
+            prev32,
+            lens32,
+            mask.view(-1),
+            bt32,
             kv_pool.view(torch.int32).reshape(-1),
-            rows,
             self.mini_fused.view(torch.int32).reshape(-1),
-            n_rows,
+            dupf.view(-1),
+            gen,
+            n_pad,
+            bt32.shape[1],
+            n_s,
+            K=k,
             S=sample,
             TPB=tpb,
             WPD=wpd,
@@ -308,23 +416,30 @@ class GvrEmissionState:
             self.mini_meta[num_rows],
             sample,
         )[:, :sample]
-        top = torch.topk(mini.masked_fill(dup, float("-inf")), k, dim=1).values
-        t0 = top[:, k - 1]
-        t1 = torch.maximum(top[:, 3 * k // 4 - 1], t0 + 1e-4)
-        t2 = torch.maximum(top[:, k // 2 - 1], t1 + 1e-4)
-        valid = torch.isfinite(t0)
-        inf = torch.full_like(t0, float("inf"))
-        s = self.seed_row[:num_rows]
-        s[:, 0] = torch.where(valid, t0, inf)
-        s[:, 1] = torch.where(valid, t1, inf)
-        s[:, 2] = torch.where(valid, t2, inf)
-        s[:, 3:8] = 0.0
-        rungs = self.seed_rungs[:num_rows]
-        rungs.copy_(s[:, 0:3])
-        if self.cand_ctl is not None:
-            nc = min(num_rows, self.cand_ctl.shape[0])
-            self.cand_ctl[:nc].zero_()
-            self.cand_cur[:nc].zero_()
+        # rank via the GVR top-k op itself (torch sort/topk fall to a
+        # per-row radix path, ~15us x rows). t0 = min over the sample's
+        # exact top-K = the sample k-th; t1/t2 are heuristic refinement
+        # lines by sample spread (only their EXACT emitted counts matter
+        # to the consumer, soundness rides on t0 alone). t0 slack: still
+        # a lower bound, and it keeps the claimed count above the K+64
+        # admission floor on zero-turnover steps.
+        scm = mini.masked_fill(dupf.view(num_rows, sample) != 0, float("-inf"))
+        tk_idx = _shared_scratch("mini_topk_idx", (num_rows, k), torch.int32, q.device)
+        pre0 = _shared_scratch("mini_pre_idx", (num_rows, k), torch.int32, q.device)
+        torch.ops.trtllm.cute_dsl_gvr_topk_decode(
+            scm, pre0, self._mini_ctx[:num_rows], tk_idx, k, 1, 1, max_seq_len=sample
+        )
+        derive[(num_rows,)](
+            scm,
+            tk_idx,
+            self.seed_row,
+            self.seed_rungs,
+            self.cand_ctl,
+            self.cand_cur,
+            K=k,
+            S=sample,
+            THREADS=256,
+        )
 
     def ensure_block_max(self, max_seq_len: int) -> torch.Tensor:
         nb4 = ((max_seq_len + 255) // 256 * 256) // 128 * 4
