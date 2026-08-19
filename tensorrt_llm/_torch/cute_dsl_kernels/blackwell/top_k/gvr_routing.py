@@ -55,6 +55,11 @@ SKIP_CS_MIN_N_RUNGS = 196608  # vb: cluster split from here up
 # (hides at large batch); list emission grows with batch and context.
 LIST_EMIT_MIN_N = 65536  # shorter rows: the emission outweighs the saving
 LIST_EMIT_MAX_B = 4  # past four rows the list stops repaying its emission
+# Single-band emission (prescore tier) drops the per-band exact-claim
+# atomics, so its list keeps repaying far past four rows; the candidate
+# scratch is shared across layers, so the cap costs one pool, not
+# rows x layers.
+PRESCORE_LIST_MAX_B = 64
 COUNTS_MIN_TOKENS = 524288  # B * raw length; below this the rungs tier wins
 RUNGS_ONLY_MIN_N = 16384  # short-row band where rungs also beats counts
 RUNGS_ONLY_MAX_N = 49152
@@ -91,7 +96,12 @@ class TopkRoute:
 
 
 def plan_emission(
-    batch: int, n_comp: int, k: int, have_epilogue: bool, compress_ratio: int = 4
+    batch: int,
+    n_comp: int,
+    k: int,
+    have_epilogue: bool,
+    compress_ratio: int = 4,
+    list_max_b: Optional[int] = None,
 ) -> str:
     """Which assist tier the indexer epilogue should emit this step.
 
@@ -102,7 +112,8 @@ def plan_emission(
     if n_comp < ASSIST_MIN_N_COMP:
         # short rows: the stock kernel is already under the fixed cost
         return "none"
-    if have_epilogue and n_comp >= LIST_EMIT_MIN_N and batch <= LIST_EMIT_MAX_B:
+    list_cap_b = LIST_EMIT_MAX_B if list_max_b is None else list_max_b
+    if have_epilogue and n_comp >= LIST_EMIT_MIN_N and batch <= list_cap_b:
         # must stay ahead of the weak-band gate: a list hit never scans the row
         return "list"
     if batch <= ASSIST_WEAK_MAX_B and ASSIST_WEAK_MIN_N <= n_comp < ASSIST_WEAK_MAX_N:

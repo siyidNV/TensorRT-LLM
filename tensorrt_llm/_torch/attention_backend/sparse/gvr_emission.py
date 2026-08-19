@@ -76,6 +76,28 @@ LIST_PARK_LINE = 1.0e30
 # k-th above the true k-th, breaking soundness).
 PRESCORE_NEIGHBORS = 3
 
+# Intra-step scratch shared across layers: emission and consumption
+# happen inside one layer's forward, and layers run sequentially on the
+# stream, so ONE pool serves every layer (addresses stay stable for
+# CUDA-graph capture; growth-only, fail-loud under capture).
+_SHARED_SCRATCH: dict = {}
+
+
+def _shared_scratch(kind: str, shape: tuple, dtype: torch.dtype, device: torch.device):
+    key = (kind, device.index)
+    need = math.prod(shape)
+    t = _SHARED_SCRATCH.get(key)
+    if t is None or t.numel() < need:
+        if torch.cuda.is_current_stream_capturing():
+            raise RuntimeError(
+                f"gvr_emission shared scratch '{kind}': (re)allocation "
+                "requested during CUDA graph capture; run a warmup step first"
+            )
+        t = torch.zeros(need, dtype=dtype, device=device)
+        _SHARED_SCRATCH[key] = t
+    return t[:need].view(shape)
+
+
 _GATHER_ROWS_KERNEL = None
 
 
@@ -136,10 +158,16 @@ class GvrEmissionState:
     """Per-attention-backend emission state (persistent buffers)."""
 
     def __init__(
-        self, max_rows: int, top_k: int, device: torch.device, enable_list_tier: bool = True
+        self,
+        max_rows: int,
+        top_k: int,
+        device: torch.device,
+        enable_list_tier: bool = True,
+        cand_rows_cap: Optional[int] = None,
     ):
         self.max_rows = max_rows
         self.top_k = top_k
+        self.cand_rows_cap = LIST_EMIT_MAX_B if cand_rows_cap is None else cand_rows_cap
         # packed seed row: lines at cols 0..2, counts (emission-filled)
         # at 3..5, adaptive-skip pass count at 6
         self.seed_row = torch.zeros((max_rows, 8), dtype=torch.float32, device=device)
@@ -155,13 +183,15 @@ class GvrEmissionState:
             # the routing only ever picks the list tier at
             # batch <= LIST_EMIT_MAX_B, so the wide candidate buffers
             # need that many rows, not max_rows (~0.33 MB/row/layer)
-            cand_rows = min(max_rows, LIST_EMIT_MAX_B)
-            self.cand_vals = torch.zeros(
-                (cand_rows, LIST_WIDTH), dtype=torch.float32, device=device
+            cand_rows = min(max_rows, self.cand_rows_cap)
+            self.cand_vals = _shared_scratch(
+                "cand_vals", (cand_rows, LIST_WIDTH), torch.float32, device
             )
-            self.cand_idx = torch.zeros((cand_rows, LIST_WIDTH), dtype=torch.int32, device=device)
-            self.cand_ctl = torch.zeros((cand_rows, 4), dtype=torch.int32, device=device)
-            self.cand_cur = torch.zeros((cand_rows, 4), dtype=torch.int32, device=device)
+            self.cand_idx = _shared_scratch(
+                "cand_idx", (cand_rows, LIST_WIDTH), torch.int32, device
+            )
+            self.cand_ctl = _shared_scratch("cand_ctl", (cand_rows, 4), torch.int32, device)
+            self.cand_cur = _shared_scratch("cand_cur", (cand_rows, 4), torch.int32, device)
         # previous-step top-k feedback (address-stable; zero-init ->
         # first step's pre_idx points at index 0, a benign candidate)
         self.prev_topk = torch.zeros((max_rows, top_k), dtype=torch.int32, device=device)
@@ -190,17 +220,18 @@ class GvrEmissionState:
             )
         from tensorrt_llm.deep_gemm import get_paged_mqa_logits_metadata
 
-        cand_rows = min(self.max_rows, LIST_EMIT_MAX_B)
+        cand_rows = min(self.max_rows, self.cand_rows_cap)
         sample = PRESCORE_NEIGHBORS * self.top_k
         assert sample % tokens_per_block == 0, (
             f"prescore sample {sample} must be a multiple of tokens_per_block {tokens_per_block}"
         )
         mb = sample // tokens_per_block
         device = self.seed_row.device
-        self.mini_fused = torch.zeros(
+        self.mini_fused = _shared_scratch(
+            "mini_fused",
             (cand_rows * mb, tokens_per_block, 1, record_bytes),
-            dtype=torch.uint8,
-            device=device,
+            torch.uint8,
+            device,
         )
         self.mini_bt = torch.arange(cand_rows * mb, dtype=torch.int32, device=device).view(
             cand_rows, mb
@@ -314,14 +345,24 @@ class GvrEmissionState:
         return self.block_max
 
     def plan(
-        self, batch: int, n_comp: int, num_sms: int, compress_ratio: int = 4
+        self,
+        batch: int,
+        n_comp: int,
+        num_sms: int,
+        compress_ratio: int = 4,
+        list_max_b: Optional[int] = None,
     ) -> tuple[str, TopkRoute]:
         """Route this step: (tier the epilogue emits, launch knobs the
         top-k consumes it with)."""
         emit_tier = plan_emission(
-            batch, n_comp, self.top_k, have_epilogue=True, compress_ratio=compress_ratio
+            batch,
+            n_comp,
+            self.top_k,
+            have_epilogue=True,
+            compress_ratio=compress_ratio,
+            list_max_b=list_max_b,
         )
-        if emit_tier == "list" and self.cand_vals is None:
+        if emit_tier == "list" and (self.cand_vals is None or batch > self.cand_vals.shape[0]):
             # constructed with enable_list_tier=False: no candidate
             # buffers to emit into, demote to the counts tier
             emit_tier = "counts"

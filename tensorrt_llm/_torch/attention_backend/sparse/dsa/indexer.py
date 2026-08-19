@@ -701,6 +701,11 @@ class Indexer(nn.Module):
         self.use_gvr_prescore = (
             os.environ.get("TRTLLM_GVR_PRESCORE", "0") == "1" and self.use_gvr_emission
         )
+        # static part of the prescore gate (per-step part lives in the
+        # decode block); also widens the list-tier batch cap
+        self._gvr_prescore_static = (
+            self.use_gvr_prescore and not self.use_fp4 and self.compress_ratio <= 1
+        )
         self._gvr_emission = None  # lazy GvrEmissionState (first decode step)
         self._gvr_route = None
         self._gvr_prescore_step = False
@@ -1386,7 +1391,7 @@ class Indexer(nn.Module):
     def _ensure_gvr_emission(self, metadata: DSAtrtllmAttentionMetadata, device: torch.device):
         """Lazy per-layer GVR ext state (see gvr_emission.GvrEmissionState)."""
         if self._gvr_emission is None:
-            from ..gvr_emission import LIST_EMIT_MIN_N, GvrEmissionState
+            from ..gvr_emission import LIST_EMIT_MIN_N, PRESCORE_LIST_MAX_B, GvrEmissionState
 
             # get_indexer_max_seq_len already returns the compressed length
             n_comp = metadata.get_indexer_max_seq_len()
@@ -1398,6 +1403,9 @@ class Indexer(nn.Module):
                 # skip its large candidate buffers when the engine's static
                 # length cannot get there
                 enable_list_tier=n_comp >= LIST_EMIT_MIN_N,
+                # single-band emission repays the list far past the 3-band
+                # batch cap; the scratch is shared across layers
+                cand_rows_cap=PRESCORE_LIST_MAX_B if self._gvr_prescore_static else None,
             )
         return self._gvr_emission
 
@@ -1790,13 +1798,9 @@ class Indexer(nn.Module):
                         indexer_max_seq_len,
                         torch.cuda.get_device_properties(q_decode.device).multi_processor_count,
                         compress_ratio=max(self.compress_ratio, 1),
+                        list_max_b=(st.cand_rows_cap if self._gvr_prescore_static else None),
                     )
-                    prescore_ok = (
-                        self.use_gvr_prescore
-                        and emit_tier == "list"
-                        and not self.use_fp4
-                        and self.compress_ratio <= 1
-                    )
+                    prescore_ok = self._gvr_prescore_static and emit_tier == "list"
                     self._gvr_prescore_step = prescore_ok
                     if prescore_ok:
                         st.ensure_prescore(

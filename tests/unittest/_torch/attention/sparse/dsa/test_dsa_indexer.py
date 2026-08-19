@@ -3827,7 +3827,8 @@ def test_kv_lens_row_reorder_threshold():
 
 @pytest.mark.skipif(not has_deep_gemm(), reason="DeepGEMM not available")
 @skip_pre_blackwell
-def test_indexer_decode_gvr_prescore_chained(monkeypatch):
+@pytest.mark.parametrize("batch_size", [2, 16])
+def test_indexer_decode_gvr_prescore_chained(monkeypatch, batch_size):
     """Chained-decode glue test for the GVR prescore tier.
 
     TRTLLM_GVR_EMISSION + TRTLLM_GVR_PRESCORE route the decode step through
@@ -3845,7 +3846,6 @@ def test_indexer_decode_gvr_prescore_chained(monkeypatch):
 
     heads, head_dim = 32, 128
     block_size = 64
-    batch_size = 2
     index_topk = 2048
     steps = 4
     kv0 = 65664  # > LIST_EMIT_MIN_N so the (engine-static) plan picks list
