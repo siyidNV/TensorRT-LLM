@@ -390,8 +390,9 @@ class GvrEmissionState:
             S=sample,
             TPB=tpb,
             BPT=self._mini_rec,
-            TS=64,
-            TILES=8,
+            TS=128,
+            TILES=4,
+            num_warps=4,
         )
         # rank via the GVR top-k op itself (torch sort/topk fall to a
         # per-row radix path, ~15us x rows). t0 = min over the sample's
