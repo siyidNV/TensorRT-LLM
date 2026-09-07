@@ -169,20 +169,22 @@ def dsa_fused_indexer_topk_decode(
     block_table: torch.Tensor,
     indices: torch.Tensor,
     values: torch.Tensor,
+    cr_shift: int = 0,
 ) -> None:
     """Fused DSv4 decode indexer + exact top-K; logits never reach GMEM.
 
-    q_fp4 [B, 1, 64, 64] u8 (packed fp4), sf_q [B, 1, 64] i32,
+    q_fp4 [B, next_n, 64, 64] u8 (packed fp4), sf_q [B, next_n, 64] i32,
     kv_cache = planar indexer K-cache pages [num_blocks, 32, 1, 68] u8,
-    weights [B, 64] f32 (signed), context_lens [B] i32,
-    block_table [B, max_blocks] i32 with max_blocks * 32 on the validated
-    grid (pad with dummy page ids; entries past context_lens are never
-    dereferenced). K = indices.shape[1]; values receive the fp16-rounded
-    selected scores.
+    weights [B * next_n, 64] f32 (signed), context_lens [B] i32 (tokens when
+    cr_shift > 0, indexer positions otherwise), block_table [B, max_blocks] i32
+    with max_blocks * 32 on the validated grid (pad with dummy page ids; entries
+    past context_lens are never dereferenced). next_n in {1, 2, 3} (MTP drafts):
+    query t of sequence b fills row b * next_n + t of indices / values
+    [B * next_n, K] and sees (context_lens[b] - next_n + t + 1) >> cr_shift
+    positions. K = indices.shape[1]; values receive the fp16-rounded scores.
     """
-    assert q_fp4.shape[1] == 1, (
-        f"dsa_fused_indexer_topk_decode: one query per sequence only (got {q_fp4.shape[1]}); "
-        "MTP drafts (next_n > 1) take the unfused path."
+    assert 1 <= q_fp4.shape[1] <= 3, (
+        f"dsa_fused_indexer_topk_decode: next_n {q_fp4.shape[1]} not in 1..3"
     )
     n_comp = block_table.shape[1] * 32
     assert n_comp % 128 == 0 and _FUSED_TOPK_NCOMP_MIN <= n_comp <= _FUSED_TOPK_NCOMP_MAX, (
@@ -204,6 +206,7 @@ def dsa_fused_indexer_topk_decode(
         None,
         indices,
         values,
+        cr_shift,
     )
 
 
@@ -217,5 +220,6 @@ def _dsa_fused_indexer_topk_decode_fake(
     block_table: torch.Tensor,
     indices: torch.Tensor,
     values: torch.Tensor,
+    cr_shift: int = 0,
 ) -> None:
     """Model the in-place indices/values mutation for fake propagation."""

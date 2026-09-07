@@ -285,3 +285,81 @@ def test_fused_indexer_topk_nospill_fp8_mixed_lengths(batch, split, monkeypatch)
     )
     indices, values = _run(inp, 1024)
     _check(inp, indices, values, 1024)
+
+
+def _build_inputs_mtp(batch, n_comp, k_top, next_n, seed, device):
+    """next_n draft queries per sequence: q_fp8 [B, next_n, 64, 128], weights [B * next_n, 64]."""
+    inp = _build_inputs(batch, n_comp, k_top, "signed", seed, device)
+    g = torch.Generator(device=device)
+    g.manual_seed(seed + 7)
+    q = torch.randn((batch * next_n * 64, 128), generator=g, device=device)
+    inp["q_fp8"] = _to_fp8_bytes(q).view(batch, next_n, 64, ROWB)
+    inp["weights"] = torch.randn((batch * next_n, 64), generator=g, device=device)
+    inp["context_lens"] = torch.clamp(inp["context_lens"], min=k_top + next_n)
+    return inp
+
+
+def _reference_mtp(inp, k_top):
+    """Row b * next_n + t: query t of sequence b over its first
+    context_lens[b] - next_n + t + 1 positions."""
+    kvf = inp["kv_cache"].reshape(inp["kv_cache"].shape[0], -1)
+    k = _from_fp8_bytes(kvf[:, : PAGE * ROWB].reshape(-1, ROWB)).reshape(-1, PAGE, 128)
+    scale = kvf[:, PAGE * ROWB :].contiguous().view(torch.float32).reshape(-1, PAGE)
+    batch, next_n = inp["q_fp8"].shape[:2]
+    q = _from_fp8_bytes(inp["q_fp8"].reshape(batch * next_n * 64, ROWB)).view(
+        batch * next_n, 64, 128
+    )
+    vals, wins = [], []
+    for i in range(batch):
+        length = int(inp["context_lens"][i])
+        nb = (length + PAGE - 1) // PAGE
+        pages = inp["block_table"][i, :nb].long()
+        kx = k[pages].reshape(nb * PAGE, 128)
+        for t in range(next_n):
+            r = i * next_n + t
+            s = torch.relu(q[r] @ kx.t())
+            s = (s * inp["weights"][r].unsqueeze(1)).sum(dim=0) * scale[pages].reshape(-1)
+            win = length - next_n + t + 1
+            s[win:] = float("-inf")
+            vals.append(torch.topk(s, k_top).values)
+            wins.append(win)
+    return torch.stack(vals), wins
+
+
+@skip_not_sm100
+@pytest.mark.parametrize("batch", [2, 8])
+@pytest.mark.parametrize("next_n", [2, 3])
+@pytest.mark.parametrize("k_top", [1024, 2048])
+@pytest.mark.parametrize("split", ["auto", "1"])
+def test_fused_indexer_topk_nospill_fp8_mtp(batch, next_n, k_top, split, monkeypatch):
+    # MTP decode on the fp8 cache: one MMA scores all next_n draft queries, each with its own
+    # selection state and causal window, output row b * next_n + t
+    monkeypatch.setenv("TRTLLM_FUSED_TOPK_GMEM_SPLIT", split)
+    device = torch.device("cuda")
+    n_comp = 16384
+    inp = _build_inputs_mtp(batch, n_comp, k_top, next_n, seed=8686 + next_n, device=device)
+    rows = batch * next_n
+    indices = torch.full((rows, k_top), -3, dtype=torch.int32, device=device)
+    values = torch.full((rows, k_top), float("nan"), dtype=torch.float32, device=device)
+    fused_indexer_topk_nospill_fp8.run(
+        inp["q_fp8"],
+        inp["kv_cache"],
+        inp["weights"],
+        inp["context_lens"],
+        inp["block_table"],
+        None,
+        indices,
+        values,
+    )
+    torch.cuda.synchronize()
+    ref_vals, wins = _reference_mtp(inp, k_top)
+    for r in range(rows):
+        row = indices[r]
+        assert int(row.min()) >= 0 and int(row.max()) < wins[r], f"row {r}: index outside window"
+        assert row.unique().numel() == k_top, f"row {r}: duplicate indices"
+        got, _ = torch.sort(values[r], descending=True)
+        want, _ = torch.sort(ref_vals[r], descending=True)
+        dv = (got - want).abs()
+        assert bool((dv <= 1e-2 + 1e-3 * want.abs()).all()), (
+            f"row {r}: max value err {float(dv.max()):.4f}"
+        )

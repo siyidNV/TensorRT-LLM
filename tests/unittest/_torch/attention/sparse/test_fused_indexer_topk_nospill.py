@@ -625,3 +625,85 @@ def test_fused_indexer_topk_nospill_mixed_lengths(batch, split, monkeypatch):
         got, _ = torch.sort(values[i], descending=True)
         want, _ = torch.sort(ref_vals[i], descending=True)
         assert bool(((got - want).abs() <= 1e-2 + 1e-3 * want.abs()).all()), f"row {i}"
+
+
+def _build_inputs_mtp(batch, n_comp, k_top, next_n, seed, device):
+    """next_n draft queries per sequence: q [B, next_n, 64, 64], sf_q [B, next_n, 64],
+    weights [B * next_n, 64]; lengths are indexer positions (cr_shift 0)."""
+    inp = _build_inputs(batch, n_comp, k_top, "signed", seed, device)
+    g = torch.Generator(device=device)
+    g.manual_seed(seed + 7)
+    q = torch.randn((batch * next_n * 64, 128), generator=g, device=device)
+    q_packed, q_sf = _quant_fp4(q)
+    inp["q_fp4"] = q_packed.view(batch, next_n, 64, 64)
+    inp["sf_q"] = q_sf.view(batch, next_n, 64)
+    inp["weights"] = torch.randn((batch * next_n, 64), generator=g, device=device)
+    inp["context_lens"] = torch.clamp(inp["context_lens"], min=k_top + next_n)
+    return inp
+
+
+def _reference_mtp(inp, k_top):
+    """Row b * next_n + t scores query t of sequence b over its first
+    context_lens[b] - next_n + t + 1 positions (the GVR / V2 row convention)."""
+    kvf = inp["kv_cache"].reshape(inp["kv_cache"].shape[0], -1)
+    kvp = kvf[:, : PAGE * 64].reshape(-1, 64)
+    kvs = kvf[:, PAGE * 64 :].contiguous().view(torch.int32).reshape(-1)
+    k = _dequant_fp4(kvp, kvs).reshape(-1, PAGE, 128)
+    batch, next_n = inp["q_fp4"].shape[:2]
+    q = _dequant_fp4(
+        inp["q_fp4"].reshape(batch * next_n * 64, 64), inp["sf_q"].reshape(batch * next_n * 64)
+    ).view(batch * next_n, 64, 128)
+    vals, wins = [], []
+    for i in range(batch):
+        length = int(inp["context_lens"][i])
+        nb = (length + PAGE - 1) // PAGE
+        kx = k[inp["block_table"][i, :nb].long()].reshape(nb * PAGE, 128)
+        for t in range(next_n):
+            r = i * next_n + t
+            s = torch.relu(q[r] @ kx.t())
+            s = (s * inp["weights"][r].unsqueeze(1)).sum(dim=0)
+            win = length - next_n + t + 1
+            s[win:] = float("-inf")
+            vals.append(torch.topk(s, k_top).values)
+            wins.append(win)
+    return torch.stack(vals), wins
+
+
+@skip_not_sm100
+@pytest.mark.parametrize("batch", [2, 8])
+@pytest.mark.parametrize("next_n", [2, 3])
+@pytest.mark.parametrize("k_top", [512, 1024])
+@pytest.mark.parametrize("split", ["auto", "1"])
+def test_fused_indexer_topk_nospill_mtp(batch, next_n, k_top, split, monkeypatch):
+    # MTP decode: one MMA scores all next_n draft queries of a sequence, each query keeps its
+    # own selection state and causal window and fills output row b * next_n + t
+    monkeypatch.setenv("TRTLLM_FUSED_TOPK_GMEM_SPLIT", split)
+    device = torch.device("cuda")
+    n_comp = 16384
+    inp = _build_inputs_mtp(batch, n_comp, k_top, next_n, seed=4242 + next_n, device=device)
+    rows = batch * next_n
+    indices = torch.full((rows, k_top), -3, dtype=torch.int32, device=device)
+    values = torch.full((rows, k_top), float("nan"), dtype=torch.float32, device=device)
+    fused_indexer_topk_nospill.run(
+        inp["q_fp4"],
+        inp["sf_q"],
+        inp["kv_cache"],
+        inp["weights"],
+        inp["context_lens"],
+        inp["block_table"],
+        None,
+        indices,
+        values,
+    )
+    torch.cuda.synchronize()
+    ref_vals, wins = _reference_mtp(inp, k_top)
+    for r in range(rows):
+        row = indices[r]
+        assert int(row.min()) >= 0 and int(row.max()) < wins[r], f"row {r}: index outside window"
+        assert row.unique().numel() == k_top, f"row {r}: duplicate indices"
+        got, _ = torch.sort(values[r], descending=True)
+        want, _ = torch.sort(ref_vals[r], descending=True)
+        dv = (got - want).abs()
+        assert bool((dv <= 1e-2 + 1e-3 * want.abs()).all()), (
+            f"row {r}: max value err {float(dv.max()):.4f}"
+        )
